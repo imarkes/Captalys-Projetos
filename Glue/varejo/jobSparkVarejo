@@ -1,0 +1,934 @@
+import sys
+import boto3
+import json
+import logging
+from datetime import datetime
+from awsglue.utils import getResolvedOptions
+import pyspark.sql.functions as f
+from pyspark.context import SparkContext
+from awsglue.context import GlueContext
+from pyspark.sql import SparkSession
+from awsglue.dynamicframe import DynamicFrame
+from pyspark.sql.types import IntegerType, DoubleType, StringType, DataType, TimestampType, LongType, StructField, StructType
+import pg8000 as pg
+import numpy as np
+
+
+
+def get_connection(conn_name):
+    client = boto3.client('glue')
+    response = client.get_connection(Name=conn_name)
+    # https://docs.aws.amazon.com/glue/latest/dg/connection-defining.html#connection-properties-jdbc
+    jdbc_url = response['Connection']['ConnectionProperties']['JDBC_CONNECTION_URL'].split('/')
+    database_port = jdbc_url[2].split(':')
+    conn_param = {}
+    conn_param['url'] = response['Connection']['ConnectionProperties']['JDBC_CONNECTION_URL']
+    conn_param['database'] = jdbc_url[3]
+    conn_param['hostname'] = database_port[0]
+    conn_param['port'] = database_port[1]
+    conn_param['user'] = response['Connection']['ConnectionProperties']['USERNAME']
+    conn_param['password'] = response['Connection']['ConnectionProperties']['PASSWORD']
+    return conn_param
+    
+    
+def exec_query_with_commit(connection_name, str_qry):
+    conn_param = get_connection(connection_name)
+    conn = pg.connect(
+        database=conn_param['database'],
+        host=conn_param['hostname'],
+        port=conn_param['port'],
+        user=conn_param['user'],
+        password=conn_param['password']
+    )
+    cur = conn.cursor()
+    cur.execute(str_qry)
+    conn.commit()
+    cur.close()
+    cur.close()
+    
+def delete_files(bucket_name, prefix):
+    s3 = boto3.resource('s3')
+    bucket = s3.Bucket(bucket_name)
+    for obj in bucket.objects.filter(Prefix=prefix):
+        s3.Object(bucket.name,obj.key).delete()
+    
+def get_result_query(connection_name, str_qry):
+    conn_param = get_connection(connection_name)    
+    conn = pg.connect(
+        database=conn_param['database'],
+        host=conn_param['hostname'],
+        port=conn_param['port'],
+        user=conn_param['user'],
+        password=conn_param['password']
+    )
+    conn.autocommit = False
+    cur = conn.cursor()
+                
+    cur.execute(str_qry)
+    rows = cur.fetchall()
+                
+    cur.close()
+    
+    return rows   
+    
+    
+
+if __name__ == '__main__':
+    
+    
+    str_cmd_schema = f"select column_name, data_type from svv_columns c where table_schema = 'captalys_stage' and table_name = 'carteira_varejo' order by ordinal_position "
+    print('Get Result query')
+    rows_schema = get_result_query('asgard-redshift-production-informationSchema',str_cmd_schema)
+            
+    # INFORMATIO SCHEMA --------------------
+    cols_list_information_schema = ''
+    list_information_schema = []
+    if rows_schema:
+        for row in rows_schema:
+            if cols_list_information_schema:
+                cols_list_information_schema += ',' + row[0]
+            else:
+                cols_list_information_schema = row[0] 
+            list_information_schema.append(row[0])
+    # ---------------------------------------------------------------------------------------------------------------
+    
+    sparkContext = SparkContext()
+    glueContext = GlueContext(sparkContext)
+    spark = glueContext.spark_session
+    
+
+    # operacoes desembolsadas sao identificadas a partir da tabela de contratos em platform_cessao
+    #TO-DO: produtos
+    str_qry_df_operacoes = """
+    
+            SELECT con.data_cessao, cp.identificador, cd.numero_documento,
+            sd.numero_documento as documento_sacado, prod.nome as produto, con.data_vencimento,
+            con.valor_aquisicao, con.valor_titulo as valor_face
+            FROM captalys_trusted.platform_cessao_master_contrato_processo cp
+            INNER JOIN captalys_trusted.platform_cessao_master_contrato as con ON cp.uuid = con.processo_uuid
+            INNER JOIN captalys_trusted.platform_cessao_master_cedente_documento as cd ON con.cedente_id = cd.cedente_id
+            INNER JOIN captalys_trusted.platform_cessao_master_sacado_documento as sd ON con.sacado_id = sd.sacado_id
+            INNER JOIN captalys_trusted.platform_cessao_master_produto as prod ON cp.produto_id = prod.id
+            WHERE cp.produto_id in (8, 12, 33, 36, 41, 43, 44, 53, 55)
+
+            
+    """
+    
+    conn_param_trusted = get_connection('asgard-redshift-production-trusted-owner')
+    conn_param_trusted['query'] = str_qry_df_operacoes
+    conn_param_trusted['redshiftTmpDir'] = 's3://captalys-analytics-temporary'
+    print('Buscando dataframe trusted dynamic df_operacoes')
+    dynamicFrame_operacao = glueContext.create_dynamic_frame.from_options('redshift', conn_param_trusted)
+    df_operacoes = dynamicFrame_operacao.toDF()
+    
+    # dados de pagamento das operacoes em platform_cessao  
+    #TO-DO: produtos
+    str_qry_df_liquidacao = """
+        select
+            lp.data_criacao,
+            lp.identificador,
+            lp.estado_atual,
+            lp.uuid,
+            lp.produto_id,
+            lp.proc_id,
+            lp.hash_liquidacao,
+            lp.tipo_operacao,
+            pag.id,
+            pag.valor_pago,
+            pag.valor_desconto,
+            pag.data_pagamento,
+            pag.data_criacao as data_criacao_pag,
+            pag.data_atualizacao,
+            pag.parcela_id,
+            pag.tipo_liquidacao,
+            pag.origem_pagamento,
+            pag.sem_financeiro,
+            pag.liquidacao_lote_id,
+            pag.liquidacao_processo_uuid,
+            pag.valor_face_liquidado,
+            pag.valor_nominal,
+            pag.multa_cobrada_anteriormente,
+            pag.valor_juros_aberto_anteriormente,
+            pag.valor_multa_aberta_anteriormente,
+            pag.ultima_data_cobranca_juros,
+            pag.ultima_data_cobranca_juros_anteriormente,
+            pag.valor_juros_moratorios,
+            pag.valor_multa_moratoria,
+            pag.valor_juros_aberto_liquidado,
+            pag.valor_multa_aberta_liquidada,
+            pag.valor_juros_liquidado,
+            pag.valor_multa_liquidada
+        from
+            captalys_trusted.platform_cessao_master_liquidacao_processo lp
+        inner join captalys_trusted.platform_cessao_master_liquidacao_pagamento as pag on
+            lp.uuid = pag.liquidacao_processo_uuid
+        inner join (
+            select
+                distinct(identificador) as identificador
+            from
+                captalys_trusted.platform_cessao_master_contrato_processo
+            where
+                produto_id in (8, 12, 33, 36, 41, 43, 44, 53, 55)
+        ) cp on
+            lp.identificador = cp.identificador
+ 
+    """
+    
+    conn_param_trusted = get_connection('asgard-redshift-production-trusted-owner')
+    conn_param_trusted['query'] = str_qry_df_liquidacao
+    conn_param_trusted['redshiftTmpDir'] = 's3://captalys-analytics-temporary/aws/tempdir/v1/all/lake/redshift/analytics/datalake_dw/schema'
+    print('Buscando dataframe trusted dynamic df_liquidacao')
+    dynamicFrame_liquidacao = glueContext.create_dynamic_frame.from_options('redshift', conn_param_trusted) 
+    df_liquidacao = dynamicFrame_liquidacao.toDF()
+
+   
+    #------Padronizacao do numero de documento df_operacoes------
+    df_operacoes = df_operacoes \
+        .withColumn('numero_documento',
+                    f.when(f.col('numero_documento') == 32402502000135,
+                         f.col('documento_sacado')).otherwise(f.col('numero_documento')))\
+        .drop(f.col('documento_sacado'))\
+        .withColumn('len', f.length(f.col('identificador')))
+    
+
+    # Retorna lista de ids do df_lista_operacoes  
+    df_lista_operacoes = df_operacoes \
+            .filter(f.col('len') == 36).select(f.col('identificador'))
+            
+    lista_operacoes = [data[0] for data in df_lista_operacoes.select('identificador').collect()]
+
+
+    #------informacoes detalhadas sobre as operacoes desembolsadas - postgres/contratacao/propostas------
+    str_qry_df_propostas = """
+            SELECT operacao_id as identificador, id_proposta, valor_presente,
+            valor_credito, prazo, prazo_max, retencao, tac, custo_fixo, custo_total,
+            score, fluxo_medio_meses, valor_limite, valor_minimo, prazo_esperado,
+            produto as tipo_proposta, tx_retencao_rating, faturamento_medio_sem_out,
+            taxa_cap 
+            FROM captalys_trusted.private_credit_master_propostas 
+            WHERE operacao_id IN {}
+        """.format(tuple(lista_operacoes))
+        
+    conn_param_trusted = get_connection('asgard-redshift-production-trusted-owner')
+    conn_param_trusted['query'] = str_qry_df_propostas
+    conn_param_trusted['redshiftTmpDir'] = 's3://captalys-analytics-temporary/aws/tempdir/v1/all/lake/redshift/analytics/datalake_dw/schema'
+    print('Buscando dataframe trusted dynamicFrame_df_propostas')
+    dynamicFrame_df_propostas = glueContext.create_dynamic_frame.from_options('redshift', conn_param_trusted) 
+    df_propostas = dynamicFrame_df_propostas.toDF()
+    #df_propostas = df_propostas.na.drop() ->> verificar se os dados foram todos carregados.
+    
+
+    str_qry_ids_proposta = """
+                SELECT operacao_id as identificador, id_proposta FROM captalys_trusted.private_credit_master_propostas 
+                WHERE operacao_id IN {}
+        """.format(tuple(lista_operacoes))
+        
+    conn_param_trusted = get_connection('asgard-redshift-production-trusted-owner')
+    conn_param_trusted['query'] = str_qry_ids_proposta
+    conn_param_trusted['redshiftTmpDir'] = 's3://captalys-analytics-temporary/aws/tempdir/v1/all/lake/redshift/analytics/datalake_dw/schema'
+    print('Buscando dataframe trusted dynamicFrame_df_ids_propostas')
+    dynamicFrame_df_ids_propostas = glueContext.create_dynamic_frame.from_options('redshift', conn_param_trusted) 
+    df_ids_propostas = dynamicFrame_df_ids_propostas.toDF()
+    
+    df_propostas = df_propostas \
+        .withColumn('origem_dados', f.when(f.isnan(f.col('valor_presente')), 'captalys_trusted.private_credit_master_propostas').otherwise(f.col('valor_presente')))
+        # .na.drop()
+        
+    
+
+    #------unificando os identificadores. Uma proposta pode ser identificada por id_proposta------
+    #------ou operation_id entre as diferentes bases de dados e produtos------
+    # Cria uma lista unica de identificadores
+    lista_identificadores = [data[0] for data in df_ids_propostas.select('id_proposta').collect()] + lista_operacoes
+    
+    #------detalhes de propostas armazenados em postgres/pricing/propostas------
+    str_qry_df_propostas_2 = """SELECT id_proposta, produto, cnpj, valor_maximo, valor_minimo, proposta  
+                            FROM captalys_trusted.pricing_master_propostas where id_proposta in {}
+                            """.format(tuple(lista_identificadores))
+
+    conn_param_trusted = get_connection('asgard-redshift-production-trusted-owner')
+    conn_param_trusted['query'] = str_qry_df_propostas_2
+    conn_param_trusted['redshiftTmpDir'] = 's3://captalys-analytics-temporary/aws/tempdir/v1/all/lake/redshift/analytics/datalake_dw/schema'
+    print('Buscando dataframe trusted dynamicFrame_df_propostas_2')
+    dynamicFrame_df_propostas_2 = glueContext.create_dynamic_frame.from_options('redshift', conn_param_trusted) 
+    df_propostas_2 = dynamicFrame_df_propostas_2.toDF()
+    
+  
+    #------tratamentos dos dados lidos de postgres/pricing/propostas------
+    # Merge dataframes 
+    '''df_propostas_2.createOrReplaceTempView("df_propostas_2")
+    df_ids_propostas.createOrReplaceTempView("df_ids_propostas")
+    df_propostas_2 = spark.sql("""  SELECT a.*, b.identificador 
+                                    FROM df_propostas_2 a 
+                                    LEFT JOIN df_ids_propostas b ON a.id_proposta = b.id_proposta """)'''
+    print('Chek')
+    df_propostas_2 = df_propostas_2.join(df_ids_propostas, ["id_proposta"])
+    
+    # atribuindo valor a coluna produto
+    df_propostas_2 = df_propostas_2\
+        .withColumn('produto', f.when(df_propostas_2.produto == 'fixo', "paypal").otherwise(f.col('produto')))
+        
+
+    # -------------------PROPOSTAS_TOMATICO_FIXO--------------------
+    #------separacao por produto para fazer os tratamentos especificos para padronizar a informacao------
+    propostas_tomatico_fixo = df_propostas_2.filter(f.col("produto") == "tomatico_fixo")
+  
+    # Extração dos detalhes da propostas_tomatico_fixo
+    detalhes_tomatico_fixo = propostas_tomatico_fixo.select(f.get_json_object(f.col('proposta'), '$.taxa').alias('taxa')\
+        ,f.get_json_object(f.col('proposta'), '$.risco.score').alias('score')\
+        ,f.get_json_object(f.col('proposta'), '$.pagamento.padrao.quantidade').alias('quantidade')\
+        ,f.get_json_object(f.col('proposta'), '$.id_proposta').alias('id_proposta')\
+        ,f.get_json_object(f.col('proposta'), '$.dados_financeiros.referencia_pricing').alias('referencia_pricing')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.valor_presente').alias('valor_presente')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.custo_total').alias('custo_total')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.custo_fixo').alias('custo_fixo')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.valor_credito').alias('valor_credito')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.custo_processamento').alias('custo_processamento')\
+        ,f.get_json_object(f.col('proposta'), '$.dados_contratuais.meses_analisados').alias('meses_analisados')
+        )
+        
+    #Convertendo o schema detalhes_tomatico_fixo   
+    detalhes_tomatico_fixo = detalhes_tomatico_fixo\
+        .withColumn('quantidade', f.col('quantidade').cast(StringType()))\
+        .withColumn('valor_escolhido', f.col('valor_presente').cast(StringType()))\
+        .withColumn('fat_media', f.col('referencia_pricing').cast(StringType()))\
+        .withColumn('score', f.col('score').cast(StringType()))\
+        .withColumn('taxa', f.col('taxa').cast(StringType()))\
+        .withColumn('custo_total', f.col('custo_total').cast(StringType()))\
+        .withColumn('custo_fixo', f.col('custo_fixo').cast(StringType()))\
+        .withColumn('valor_credito', f.col('valor_credito').cast(StringType()))\
+        .withColumn('custo_processamento', f.col('custo_processamento').cast(StringType()))\
+        .withColumn('meses_analisados', f.col('meses_analisados').cast(StringType()))
+    
+   
+    # merge dataframes
+    '''detalhes_tomatico_fixo.createOrReplaceTempView("detalhes_tomatico_fixo")
+    propostas_tomatico_fixo.createOrReplaceTempView("propostas_tomatico_fixo")
+    detalhes_tomatico_fixo_join = spark.sql("""SELECT a.identificador, a.produto, a.cnpj, a.valor_maximo, a.valor_minimo, a.proposta, b.*
+                                                FROM propostas_tomatico_fixo a 
+                                                LEFT JOIN detalhes_tomatico_fixo b ON a.id_proposta = b.id_proposta""")'''
+    print('chek')
+    detalhes_tomatico_fixo_join = propostas_tomatico_fixo.join(detalhes_tomatico_fixo, ['id_proposta'])
+    # Criando novas colunas detalhes_tomatico_fixo
+    detalhes_tomatico_fixo = detalhes_tomatico_fixo_join \
+        .withColumn('origem_dados', f.lit('captalys_trusted.pricing_master_propostas'))\
+        .withColumn('tipo_proposta', f.lit('fixo'))\
+        .withColumn('periodicidade', f.lit('semanal'))\
+        .withColumn('produto', f.lit('tomatico_fixo'))\
+        .withColumn("taxa", f.lit(f.col("taxa")/100))\
+        .withColumn("prazo", f.lit(f.col('quantidade')/4))\
+        .withColumn('identificador', f.col('id_proposta'))
+    
+
+    # # -------------------PROPOSTAS_MOVILE--------------------
+    propostas_movile = df_propostas_2.filter(f.col('produto') == 'movile')
+    
+    # Extração dos detalhes da propostas_movile
+    detalhes_movile = propostas_movile.select(f.get_json_object(f.col('proposta'), '$.taxa').alias('taxa')\
+        ,f.get_json_object(f.col('proposta'), '$.risco.score').alias('score')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.num_parcelas').alias('num_parcelas')\
+        ,f.get_json_object(f.col('proposta'), '$.id_proposta').alias('id_proposta')\
+        ,f.get_json_object(f.col('proposta'), '$.dados_financeiros.referencia_pricing').alias('referencia_pricing')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.valor_presente').alias('valor_presente')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.custo_total').alias('custo_total')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.custo_fixo').alias('custo_fixo')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.valor_credito').alias('valor_credito')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.custo_processamento').alias('custo_processamento')\
+        ,f.get_json_object(f.col('proposta'), '$.dados_contratuais.meses_analisados').alias('meses_analisados')
+        )
+        
+    #Convertendo o schema propostas_movile    
+    detalhes_movile = detalhes_movile\
+        .withColumn('num_parcelas', f.col('num_parcelas').cast(StringType()))\
+        .withColumn('valor_escolhido', f.col('valor_presente').cast(StringType()))\
+        .withColumn('fat_media', f.col('referencia_pricing').cast(StringType()))\
+        .withColumn('score', f.col('score').cast(StringType()))\
+        .withColumn('taxa', f.col('taxa').cast(StringType()))\
+        .withColumn('custo_total', f.col('custo_total').cast(StringType()))\
+        .withColumn('custo_fixo', f.col('custo_fixo').cast(StringType()))\
+        .withColumn('valor_credito', f.col('valor_credito').cast(StringType()))\
+        .withColumn('custo_processamento', f.col('custo_processamento').cast(StringType()))\
+        .withColumn('meses_analisados', f.col('meses_analisados').cast(StringType()))
+  
+    #merge dataframes
+    '''propostas_movile.createOrReplaceTempView("propostas_movile")
+    detalhes_movile.createOrReplaceTempView("detalhes_movile")
+    detalhes_detalhes_movile_join = spark.sql("""SELECT a.identificador, a.produto, a.cnpj, a.valor_maximo, a.valor_minimo, a.proposta, b.* 
+                                                FROM propostas_movile a 
+                                                LEFT JOIN detalhes_movile b ON a.id_proposta = b.id_proposta""")'''
+    print('chek2')
+    detalhes_detalhes_movile_join = propostas_movile.join(detalhes_movile, ['id_proposta'] )
+    # Criando novas colunas 
+    detalhes_movile = detalhes_detalhes_movile_join \
+        .withColumn('origem_dados', f.lit('captalys_trusted.pricing_master_propostas'))\
+        .withColumn('tipo_proposta', f.lit('fixo'))\
+        .withColumn('periodicidade', f.lit('mensal'))\
+        .withColumnRenamed('num_parcelas', 'prazo')\
+        .withColumn('identificador', f.col('id_proposta'))
+    
+    # # -------------------PROPOSTAS_B2W_FIXO--------------------
+    propostas_b2w_fixo = df_propostas_2.filter(f.col("produto") == "b2w_fixo")
+
+    # Extração dos detalhes da propostas_b2w_fixo
+    detalhes_b2w_fixo = propostas_b2w_fixo.select(f.get_json_object(f.col('proposta'), '$.taxa_mensal').alias('taxa')\
+        ,f.get_json_object(f.col('proposta'), '$.score').alias('score')\
+        ,f.get_json_object(f.col('proposta'), '$.id_proposta').alias('id_proposta')\
+        ,f.get_json_object(f.col('proposta'), '$.prazo').alias('prazo')\
+        ,f.get_json_object(f.col('proposta'), '$.valor_presente').alias('valor_presente')\
+        ,f.get_json_object(f.col('proposta'), '$.custo_total').alias('custo_total')\
+        ,f.get_json_object(f.col('proposta'), '$.custo_fixo').alias('custo_fixo')\
+        ,f.get_json_object(f.col('proposta'), '$.valor_credito').alias('valor_credito')\
+        ,f.get_json_object(f.col('proposta'), '$.faturamento_referencia').alias('faturamento_referencia')\
+        ,f.get_json_object(f.col('proposta'), '$.custo_processamento').alias('custo_processamento')
+        )
+    
+    #Convertendo o schema detalhes_b2w_fixo    
+    detalhes_b2w_fixo = detalhes_b2w_fixo\
+        .withColumn('valor_escolhido', f.col('valor_presente').cast(StringType()))\
+        .withColumn('prazo', f.col('prazo').cast(StringType()))\
+        .withColumn('fat_media', f.col('faturamento_referencia').cast(StringType()))\
+        .withColumn('score', f.col('score').cast(StringType()))\
+        .withColumn('taxa', f.col('taxa').cast(StringType()))\
+        .withColumn('custo_total', f.col('custo_total').cast(StringType()))\
+        .withColumn('custo_fixo', f.col('custo_fixo').cast(StringType()))\
+        .withColumn('valor_credito', f.col('valor_credito').cast(StringType()))\
+        .withColumn('custo_processamento', f.col('custo_processamento').cast(StringType()))
+   
+    # merge dataframes
+    '''propostas_b2w_fixo.createOrReplaceTempView("propostas_b2w_fixo")
+    detalhes_b2w_fixo.createOrReplaceTempView("detalhes_b2w_fixo")
+    detalhes_b2w_fixo_join = spark.sql("""SELECT a.identificador, a.produto, a.cnpj, a.valor_maximo, a.valor_minimo, a.proposta, b.* 
+                                                FROM propostas_b2w_fixo a 
+                                                LEFT JOIN detalhes_b2w_fixo b ON a.id_proposta = b.id_proposta""")'''
+    print('chek-3')
+    detalhes_b2w_fixo_join = propostas_b2w_fixo.join(detalhes_b2w_fixo, propostas_b2w_fixo.id_proposta == detalhes_b2w_fixo.id_proposta, 'left')
+    
+    #Criando novas colunas propostas_b2w_fixo
+    detalhes_b2w_fixo = detalhes_b2w_fixo_join \
+        .withColumn('origem_dados', f.lit('captalys_trusted.pricing_master_propostas'))\
+        .withColumn('tipo_proposta', f.lit('fixo'))\
+        .withColumn('periodicidade', f.lit('mensal'))\
+        .withColumn('meses_analisados', f.lit(np.nan))\
+        .withColumn("prazo", f.lit(f.col('prazo')/2))\
+        .withColumn('identificador', f.col('id_proposta'))
+    
+   
+    #-------------------PROPOSTAS_PAYPAL--------------------
+    propostas_paypal = df_propostas_2.filter(f.col("produto") == "paypal")
+    
+    # Extração dos detalhes da propostas_paypal
+    detalhes_paypal = propostas_paypal.select(f.get_json_object(f.col('proposta'), '$.detalhe.valor_presente').alias('valor_escolhido')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.valor_credito').alias('valor_credito')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.custo_processamento').alias('custo_processamento')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.custo_fixo').alias('custo_fixo')\
+        ,f.get_json_object(f.col('proposta'), '$.detalhe.custo_total').alias('custo_total')\
+        ,f.get_json_object(f.col('proposta'), '$.risco.score').alias('score')\
+        ,f.get_json_object(f.col('proposta'), '$.taxa').alias('taxa')\
+        ,f.get_json_object(f.col('proposta'), '$.dados_financeiros.meses_analisados').alias('meses_analisados')\
+        ,f.get_json_object(f.col('proposta'), '$.dados_financeiros.fat_medio_bruto').alias('fat_medio_bruto')\
+        ,f.get_json_object(f.col('proposta'), '$.id_proposta').alias('id_proposta')
+        )
+     
+    #Convertendo o schema detalhes_paypal    
+    detalhes_paypal = detalhes_paypal\
+        .withColumn('valor_escolhido', f.col('valor_escolhido').cast(StringType()))\
+        .withColumn('valor_credito', f.col('valor_credito').cast(StringType()))\
+        .withColumn('custo_processamento', f.col('custo_processamento').cast(StringType()))\
+        .withColumn('score', f.col('score').cast(StringType()))\
+        .withColumn('taxa', f.col('taxa').cast(StringType()))\
+        .withColumn('custo_total', f.col('custo_total').cast(StringType()))\
+        .withColumn('fat_media', f.col('fat_medio_bruto').cast(StringType()))\
+        .withColumn('custo_fixo', f.col('custo_fixo').cast(StringType()))\
+        .withColumn('valor_credito', f.col('valor_credito').cast(StringType()))\
+        .withColumn('meses_analisados', f.col('meses_analisados').cast(StringType()))
+
+    #merge dataframes
+    propostas_paypal.createOrReplaceTempView("propostas_paypal")
+    detalhes_paypal.createOrReplaceTempView("detalhes_paypal")
+    detalhes_paypal_join = spark.sql("""SELECT a.identificador, a.produto, a.cnpj, a.valor_maximo, a.valor_minimo, a.proposta, b.*
+                                                FROM propostas_paypal a 
+                                                LEFT JOIN detalhes_paypal b ON a.id_proposta = b.id_proposta""")
+    
+    # Criando novas colunas 
+    detalhes_paypal = detalhes_paypal_join \
+        .withColumn('origem_dados', f.lit('captalys_trusted.pricing_master_propostas'))\
+        .withColumn('tipo_proposta', f.lit('fixo'))\
+        .withColumn('periodicidade', f.lit('diaria'))\
+        .withColumn('identificador', f.col('id_proposta'))
+    
+    # -------------------DOCS_PAYPAL--------------------
+    # Transforma os identificador em lista.
+    detalhes_paypal_list = [data[0] for data in detalhes_paypal.select('identificador').collect()]
+ 
+    docs_paypal = df_operacoes\
+        .select('identificador', 'numero_documento')\
+        .withColumnRenamed('numero_documento', 'cnpj')\
+        .filter(f.col("identificador").isin(detalhes_paypal_list))
+
+    #------UPDATE DATAFRAMES-------
+    # Converte em pandas
+    transform_detalhes_paypal = detalhes_paypal.toPandas()
+    transform_docs_paypal = docs_paypal.toPandas()
+    
+    transform_docs_paypal.set_index("identificador", inplace=True)
+    transform_detalhes_paypal.set_index("identificador", inplace=True)
+    transform_detalhes_paypal.update(transform_docs_paypal)
+    transform_detalhes_paypal.reset_index(inplace=True)
+    transform_docs_paypal.reset_index(inplace=True)
+    
+    #Converte df em Spark
+    detalhes_paypal = spark.createDataFrame(transform_detalhes_paypal)
+   
+    #-------------------PROPOSTAS_B2W_VARIAVEL--------------------
+    propostas_b2w_variavel = df_propostas_2.filter(f.col("produto") == "b2w_variavel")
+
+    # Extração dos detalhes da propostas_b2w_variavel
+    detalhes_b2w_variavel = propostas_b2w_variavel.select(f.get_json_object(f.col('proposta'), '$.custo_total').alias('custo_total')\
+        ,f.get_json_object(f.col('proposta'), '$.custo_fixo').alias('custo_fixo')\
+        ,f.get_json_object(f.col('proposta'), '$.valor_credito').alias('valor_credito')\
+        ,f.get_json_object(f.col('proposta'), '$.taxa_esperada').alias('taxa_esperada')\
+        ,f.get_json_object(f.col('proposta'), '$.faturamento_referencia').alias('faturamento_referencia')\
+        ,f.get_json_object(f.col('proposta'), '$.prazo').alias('prazo')\
+        ,f.get_json_object(f.col('proposta'), '$.prazo_max').alias('prazo_max')\
+        ,f.get_json_object(f.col('proposta'), '$.tx_retencao_rating').alias('tx_retencao_rating')\
+        ,f.get_json_object(f.col('proposta'), '$.tx_retencao').alias('tx_retencao')\
+        ,f.get_json_object(f.col('proposta'), '$.score').alias('score')\
+        ,f.get_json_object(f.col('proposta'), '$.id_proposta').alias('id_proposta')
+        )
+    
+    # Convertendo o schema b2w_variavel    
+    detalhes_b2w_variavel = detalhes_b2w_variavel\
+        .withColumn('custo_total', f.col('custo_total').cast(StringType()))\
+        .withColumn('custo_fixo', f.col('custo_fixo').cast(StringType()))\
+        .withColumn('valor_credito', f.col('valor_credito').cast(StringType()))\
+        .withColumn('taxa', f.col('taxa_esperada').cast(StringType()))\
+        .withColumn('fat_media', f.col('faturamento_referencia').cast(StringType()))\
+        .withColumn('prazo', f.col('prazo').cast(StringType()))\
+        .withColumn('tx_retencao_rating', f.col('tx_retencao_rating').cast(StringType()))\
+        .withColumn('tx_retencao', f.col('tx_retencao').cast(StringType()))\
+        .withColumn('score', f.col('score').cast(StringType()))\
+        .withColumn('prazo_max', f.col('prazo_max').cast(StringType()))
+      
+  
+    #merge dataframes
+    propostas_b2w_variavel.createOrReplaceTempView("propostas_b2w_variavel")
+    detalhes_b2w_variavel.createOrReplaceTempView("detalhes_b2w_variavel")
+    detalhes_b2w_variavel_join = spark.sql("""SELECT a.identificador, a.produto, a.cnpj, a.valor_maximo, a.valor_minimo, a.proposta, b.*
+                                                FROM propostas_b2w_variavel a 
+                                                LEFT JOIN detalhes_b2w_variavel b ON a.id_proposta = b.id_proposta""")
+
+    
+    # Criando novas colunas
+    detalhes_b2w_variavel = detalhes_b2w_variavel_join \
+        .withColumn('origem_dados', f.lit('captalys_trusted.pricing_master_propostas'))\
+        .withColumn('tipo_proposta', f.lit('variavel'))\
+        .withColumn('periodicidade', f.lit(np.nan))\
+        .withColumn('meses_analisados', f.lit(np.nan))\
+        .withColumn('identificador', f.col('id_proposta'))
+    
+
+    #-------- Adicionando dados de propostas de postgres/pricing_clj -- novo servico de precificacao --------
+    str_qry_precificacao = """
+                SELECT ofr_tx_operation_id as identificador, * 
+                FROM captalys_trusted.pricing_clj_master_offer WHERE ofr_tx_operation_id IN {}
+                AND ofr_lg_confirmed = 'True'
+                """.format(tuple(lista_operacoes))
+                
+                
+    conn_param_trusted = get_connection('asgard-redshift-production-trusted-owner')
+    conn_param_trusted['query'] = str_qry_precificacao
+    conn_param_trusted['redshiftTmpDir'] = 's3://captalys-analytics-temporary/aws/tempdir/v1/all/lake/redshift/analytics/datalake_dw/schema'
+    print('Buscando dataframe trusted dynamicFrame_propostas_clj')
+    dynamicFrame_propostas_clj = glueContext.create_dynamic_frame.from_options('redshift', conn_param_trusted) 
+    df_propostas_clj = dynamicFrame_propostas_clj.toDF()
+    
+    
+    str_qry_propostas_clj_2 = """
+              SELECT ofr_tx_offer_id as identificador, *
+              FROM captalys_trusted.pricing_clj_master_offer
+              where ofr_tx_offer_id in {} 
+              and ofr_lg_confirmed = 'True'
+        """.format(tuple(lista_operacoes))
+        
+    
+    conn_param_trusted = get_connection('asgard-redshift-production-trusted-owner')
+    conn_param_trusted['query'] = str_qry_propostas_clj_2
+    conn_param_trusted['redshiftTmpDir'] = 's3://captalys-analytics-temporary/aws/tempdir/v1/all/lake/redshift/analytics/datalake_dw/schema'
+    print('Buscando dataframe trusted dynamicFrame_propostas_clj_2')
+    dynamicFrame_propostas_clj_2 = glueContext.create_dynamic_frame.from_options('redshift', conn_param_trusted) 
+    df_propostas_clj_2 = dynamicFrame_propostas_clj_2.toDF()
+    
+
+    # # Concatenando dataframes
+    df_propostas_clj.createOrReplaceTempView("df_propostas_clj")
+    df_propostas_clj_2.createOrReplaceTempView("df_propostas_clj_2")
+    df_propostas_clj_union = spark.sql("""  SELECT a.* 
+                                            FROM df_propostas_clj a 
+                                            LEFT JOIN df_propostas_clj_2 b ON a.ofr_tx_operation_id = b.ofr_tx_operation_id """)
+   
+    
+    #Extrai os dados json da col ofr_js_offer_raw
+    detalhes_propostas_clj = df_propostas_clj_union.select(f.get_json_object(f.col('ofr_js_offer_raw'), '$.disbursed_issue_amount').alias('disbursed_issue_amount')\
+        ,f.get_json_object(f.col('ofr_js_offer_raw'), '$.issue_amount').alias('issue_amount')\
+        ,f.get_json_object(f.col('ofr_js_offer_raw'), '$.pmt_number').alias('pmt_number')\
+        ,f.get_json_object(f.col('ofr_js_offer_raw'), '$.monthly_interest_rate').alias('monthly_interest_rate')\
+        ,f.get_json_object(f.col('ofr_js_offer_raw'), '$.total_pre_fixed_amount').alias('total_pre_fixed_amount')\
+        ,f.get_json_object(f.col('ofr_js_offer_raw'), '$.contract_fee_amount').alias('contract_fee_amount')\
+        ,f.get_json_object(f.col('ofr_js_offer_raw'), '$.crd_vl_estimated_revenue').alias('crd_vl_estimated_revenue_det')\
+        ,f.get_json_object(f.col('ofr_js_offer_raw'), '$.offer_key').alias('offer_key')\
+        ,f.get_json_object(f.col('ofr_js_offer_raw'), '$.payment_periodicity').alias('payment_periodicity')
+        )
+
+    #Join com os dataframes
+    df_propostas_clj_union.createOrReplaceTempView("df_propostas_clj_union")
+    detalhes_propostas_clj.createOrReplaceTempView("detalhes_propostas_clj")
+    detalhes_propostas_clj_join = spark.sql("""SELECT a.*, b.* 
+                                                FROM df_propostas_clj_union a 
+                                                LEFT JOIN detalhes_propostas_clj b ON a.ofr_tx_offer_id = b.offer_key""")
+                                                
+
+    #------Adicionando dados da Politica de Credito de postgres/pricing_clj -- novo servico de precificacao------
+    #Cria lista ofr_tx_operation_id
+    detalhes_propostas_clj_list = [data[0] for data in detalhes_propostas_clj_join.select('ofr_tx_offer_id').collect()]
+    
+    str_qry_credit_clj = """
+                SELECT crd_tx_operation_id as ofr_tx_operation_id, crd_vl_max_limit, crd_vl_min_limit, 
+                crd_vl_estimated_revenue, crd_js_limit_raw 
+                FROM captalys_trusted.pricing_clj_master_credit 
+                WHERE crd_tx_operation_id IN {}
+                and crd_lg_cancelled is null
+        """.format(tuple(detalhes_propostas_clj_list))
+   
+    conn_param_trusted = get_connection('asgard-redshift-production-trusted-owner')
+    conn_param_trusted['query'] = str_qry_credit_clj
+    conn_param_trusted['redshiftTmpDir'] = 's3://captalys-analytics-temporary/aws/tempdir/v1/all/lake/redshift/analytics/datalake_dw/schema'
+    print('Buscando dataframe trusted dynamicFrame_credit_clj')
+    dynamicFrame_credit_clj = glueContext.create_dynamic_frame.from_options('redshift', conn_param_trusted) 
+    df_credit_clj = dynamicFrame_credit_clj.toDF()
+    df_credit_clj = df_credit_clj.filter(f.col("crd_vl_max_limit") > 0)
+    
+    
+    #------Funcao auxiliar para pegar o score do json com dados da politica------
+    def get_score(dict_infos):
+        try:
+            score = dict_infos["info"]["external_sources"][-3]["data"]["revenue_score"]
+        except:
+            try:
+                score = eval(
+                    dict_infos["info"]["external_sources"][-3]["data"]["data"]["dados"]["captalys"]["greg"]["execute"][
+                        "payload"])["response"]["revenue_score"]
+            except:
+                score = np.nan
+        return score
+        
+    udf_score = f.udf(lambda x: get_score(x))
+    df_credit_clj = df_credit_clj.withColumn('score', udf_score(f.col("crd_js_limit_raw")))
+    df_credit_clj.dropDuplicates(["ofr_tx_operation_id"])
+
+
+    # merge dataframes
+    detalhes_propostas_clj_join.createOrReplaceTempView("detalhes_propostas_clj_join")
+    df_credit_clj.createOrReplaceTempView("df_credit_clj")
+    detalhes_propostas_clj_join_df_credit_clj = spark.sql("""SELECT a.*, b.crd_vl_max_limit, b.crd_vl_min_limit, b.crd_vl_estimated_revenue, b.crd_js_limit_raw
+                                                FROM detalhes_propostas_clj_join a 
+                                                LEFT JOIN df_credit_clj b ON a.ofr_tx_operation_id = b.ofr_tx_operation_id""")
+                                                
+                          
+    detalhes_propostas_clj_res = detalhes_propostas_clj_join_df_credit_clj\
+        .withColumnRenamed("ofr_tx_offer_id", "id_proposta")\
+        .withColumnRenamed("crd_vl_max_limit", "valor_maximo") \
+        .withColumnRenamed("crd_vl_min_limit", "valor_minimo") \
+        .withColumnRenamed("disbursed_issue_amount", "valor_escolhido") \
+        .withColumnRenamed("issue_amount", "valor_credito") \
+        .withColumnRenamed("pmt_number", "prazo") \
+        .withColumnRenamed("monthly_interest_rate", "taxa") \
+        .withColumnRenamed("total_pre_fixed_amount", "custo_fixo") \
+        .withColumnRenamed("contract_fee_amount", "custo_processamento") \
+        .withColumnRenamed("total_pre_fixed_amount", "custo_total") \
+        .withColumnRenamed("crd_vl_estimated_revenue", "fat_media") \
+        .withColumnRenamed("ofr_tx_payment_type", "tipo_proposta") \
+        .withColumnRenamed("payment_periodicity", "periodicidade")\
+        .withColumn("tipo_proposta", f.when(f.col("tipo_proposta") == "fixed", 'fixo').otherwise(f.col('tipo_proposta')))
+
+    
+    def converte_periodicidade(periodicidade):
+        if periodicidade == "monthly":
+            return 30
+        elif periodicidade == "weekly":
+            return 7
+        else:
+            return periodicidade
+
+    udf_periodicidade = f.udf(lambda x: converte_periodicidade(x))
+    detalhes_propostas_clj_res = detalhes_propostas_clj_res.withColumn('periodicidade', udf_periodicidade(f.col("periodicidade")))\
+        .withColumn('origem_dados', f.lit('captalys_trusted.pricing_clj_master_'))
+        
+
+    #------CONSOLIDANDO OS DADOS(concat) ------
+    union1 = detalhes_movile.unionByName(detalhes_propostas_clj_res, allowMissingColumns=True)
+    union2 = union1.unionByName(detalhes_tomatico_fixo,allowMissingColumns=True)
+    union3 = union2.unionByName(detalhes_paypal,allowMissingColumns=True)
+    union4 = union3.unionByName(detalhes_b2w_fixo, allowMissingColumns=True)
+    union_res = union4.unionByName(detalhes_b2w_variavel, allowMissingColumns=True)
+    propostas_v3 = union_res\
+        .withColumnRenamed("valor_escolhido", "valor_presente_") \
+        .withColumnRenamed("tx_retencao", "retencao").dropDuplicates(['identificador'])
+        
+
+    df_propostas = df_propostas \
+        .withColumn("periodicidade", f.lit(np.nan)) \
+        .withColumnRenamed("fluxo_medio_meses", "meses_analisados") \
+        .withColumnRenamed("taxa_cap", "taxa") \
+        .withColumnRenamed("faturamento_medio_sem_out", "fat_media") \
+        .withColumnRenamed("tac", "custo_processamento") \
+        .withColumnRenamed("valor_limite", "valor_maximo") \
+        .withColumn("retencao", f.when(f.col("tipo_proposta") == "fixo", np.nan).otherwise('retencao'))
+        
+   
+    #merge dataframes
+    df_propostas.createOrReplaceTempView("df_propostas")
+    df_operacoes.createOrReplaceTempView("df_operacoes")
+    df_operacoes_join = spark.sql("""SELECT a.*, b.data_cessao, b.numero_documento, b.produto, b.data_vencimento, b.valor_aquisicao, b.valor_face, b.len
+                                    FROM df_propostas a 
+                                    LEFT JOIN df_operacoes b ON a.identificador = b.identificador""").dropDuplicates(['identificador'])
+    
+    #------UPDATE propostas_v3------
+    # Convertendo em pandas
+    transform_df_operacoes_join = df_operacoes_join.toPandas() 
+    transform_propostas_v3 = propostas_v3.toPandas()
+   
+    transform_df_operacoes_join.set_index("identificador", inplace=True)
+    transform_propostas_v3.set_index("identificador", inplace=True)
+    df_drop = transform_propostas_v3.drop(columns=["cnpj", "produto"])
+    transform_df_operacoes_join.update(df_drop, overwrite=True)
+    transform_df_operacoes_join.reset_index(inplace=True)
+
+    # crianndo o schema_v3
+    schema_v3 = StructType([StructField('identificador', StringType(),True),
+        StructField('id_proposta', StringType(),True),
+        StructField('valor_presente', StringType(),True),
+        StructField('valor_credito', StringType(),True),
+        StructField('prazo', StringType(),True),
+        StructField('prazo_max', StringType(),True),
+        StructField('retencao', StringType(),True),
+        StructField('custo_processamento', StringType(),True),
+        StructField('custo_fixo', StringType(),True),
+        StructField('custo_total', StringType(),True),
+        StructField('score', StringType(),True),
+        StructField('meses_analisados', StringType(),True),
+        StructField('valor_maximo', StringType(),True),
+        StructField('valor_minimo', StringType(),True),
+        StructField('prazo_esperado', StringType(),True),
+        StructField('tipo_proposta', StringType(),True),
+        StructField('tx_retencao_rating', StringType(),True),
+        StructField('fat_media', StringType(),True),
+        StructField('taxa', StringType(),True),
+        StructField('origem_dados', StringType(),True),
+        StructField('periodicidade', StringType(),True),
+        StructField('data_cessao', StringType(),True),
+        StructField('numero_documento', StringType(),True),
+        StructField('produto', StringType(),True),
+        StructField('data_vencimento', StringType(),True),
+        StructField('valor_face', StringType(),True),
+        StructField('len', StringType(),True),
+        StructField('valor_aquisicao', StringType(),True)])
+    
+    #Convertendo em spark
+    df_operacoes = spark.createDataFrame(transform_df_operacoes_join, schema_v3) 
+ 
+ 
+    #------------- Adicionando dados de mysql/apiPricing -------------
+    df_operacoes_list = [data[0] for data in df_operacoes.select('identificador').collect()]
+
+    sqr_qry_propostas_v1 = """
+                        SELECT id_proposta as identificador, propostas, parametros_fixos 
+                        FROM captalys_trusted.apipricing_master_propostas_raw  WHERE id_proposta in {}
+                        """.format(tuple(df_operacoes_list))
+    
+    conn_param_trusted = get_connection('asgard-redshift-production-trusted-owner')
+    conn_param_trusted['query'] = sqr_qry_propostas_v1
+    conn_param_trusted['redshiftTmpDir'] = 's3://captalys-analytics-temporary/aws/tempdir/v1/all/lake/redshift/analytics/datalake_dw/schema'
+    print('Buscando dataframe trusted dynamicFrame_propostas_v1')
+    dynamicFrame_propostas_v1 = glueContext.create_dynamic_frame.from_options('redshift', conn_param_trusted) 
+    propostas_v1 = dynamicFrame_propostas_v1.toDF()
+
+    # #----------------------Verificar: coluna valor_credito não existe em propostas--- ERRO!!!!
+    # def set_proposta_valor_credito(dict_data):
+    #     try:
+    #         prop = dict_data["propostas"]["valor_credito"]
+    #     except:
+    #         prop = dict_data["parametros_fixos"]["valor_credito"]
+    #     return prop 
+        
+    # udf_valor_credito = f.udf(lambda x: set_proposta_valor_credito(x))
+    # propostas_v1 = propostas_v1.withColumn('valor_credito', udf_valor_credito(f.col("valor_credito")))
+    
+  
+    propostas_v1 = propostas_v1 \
+        .select(f.get_json_object(f.col('parametros_fixos'), '$.volume_escolhido').alias('volume_escolhido')\
+                ,f.get_json_object(f.col('parametros_fixos'), '$.valor_credito').alias('valor_credito')\
+                ,f.get_json_object(f.col('parametros_fixos'), '$.meses_usado_fluxo_media').alias('meses_usado_fluxo_media')\
+                ,f.get_json_object(f.col('parametros_fixos'), '$.prazo_esperado').alias('prazo_esperado')\
+                ,f.get_json_object(f.col('parametros_fixos'), '$.tx_retencao_rating').alias('tx_retencao_rating')\
+                ,f.get_json_object(f.col('parametros_fixos'), '$.faturamento_medio_sem_out').alias('faturamento_medio_sem_out')\
+                ,f.get_json_object(f.col('parametros_fixos'), '$.tx_captalys_desejada').alias('tx_captalys_desejada')\
+                ,f.get_json_object(f.col('parametros_fixos'), '$.score').alias('score')\
+                ,f.get_json_object(f.col('parametros_fixos'), '$.custo_processamento').alias('custo_processamento')\
+                ,f.get_json_object(f.col('propostas'), '$.prazo').alias('prazo')\
+                ,f.get_json_object(f.col('propostas'), '$.prazo_max').alias('prazo_max')\
+                ,f.get_json_object(f.col('propostas'), '$.tx_retencao').alias('tx_retencao')\
+                ,f.get_json_object(f.col('propostas'), '$.custo_fixo').alias('custo_fixo')\
+                ,f.get_json_object(f.col('propostas'), '$.custo_total').alias('custo_total')\
+                ,f.get_json_object(f.col('propostas'), '$.valor_limite').alias('valor_limite')\
+                ,f.get_json_object(f.col('propostas'), '$.valor_minimo').alias('valor_minimo')
+                , 'identificador')\
+        .withColumn('tipo_proposta', f.lit('variavel'))\
+        .withColumn('origem_dados', f.lit('captalys_trusted.apipricing_master_propostas_raw'))
+        
+
+    #------UPDATE V1------
+    # Convertendo em pandas
+    propostas_v1_transform = propostas_v1.toPandas()
+    df_operacoes_transform = df_operacoes.toPandas()
+   
+    df_operacoes_transform.set_index("identificador", inplace=True)
+    propostas_v1_transform.set_index("identificador", inplace=True)
+    df_operacoes_transform.update(propostas_v1_transform, overwrite=False)
+    df_operacoes_transform.reset_index(inplace=True)
+    propostas_v1_transform.reset_index(inplace=True)
+
+    # criando o schema
+    v1_schema = StructType([StructField('identificador', StringType(),True),
+        StructField('id_proposta', StringType(),True),
+        StructField('valor_presente', StringType(),True),
+        StructField('valor_credito', StringType(),True),
+        StructField('prazo', StringType(),True),
+        StructField('prazo_max', StringType(),True),
+        StructField('retencao', StringType(),True),
+        StructField('custo_processamento', StringType(),True),
+        StructField('custo_fixo', StringType(),True),
+        StructField('custo_total', StringType(),True),
+        StructField('score', StringType(),True),
+        StructField('meses_analisados', StringType(),True),
+        StructField('valor_maximo', StringType(),True),
+        StructField('valor_minimo', StringType(),True),
+        StructField('prazo_esperado', StringType(),True),
+        StructField('tipo_proposta', StringType(),True),
+        StructField('tx_retencao_rating', StringType(),True),
+        StructField('fat_media', StringType(),True),
+        StructField('taxa', StringType(),True),
+        StructField('origem_dados', StringType(),True),
+        StructField('periodicidade', StringType(),True),
+        StructField('data_cessao', StringType(),True),
+        StructField('numero_documento', StringType(),True),
+        StructField('produto', StringType(),True),
+        StructField('data_vencimento', StringType(),True),
+        StructField('valor_face', StringType(),True),
+        StructField('len', StringType(),True),
+        StructField('valor_aquisicao', StringType(),True)
+    ])
+    
+    #Convertendo em spark
+    df_operacoes = spark.createDataFrame(df_operacoes_transform, v1_schema)
+
+    #Verificando colunas
+    df_operacoes = df_operacoes\
+        .withColumn("data_referencia", f.lit(datetime.now().date()))\
+        .withColumn("prazo_esperado", f.when(f.isnan(f.col('prazo_esperado')), f.col('prazo')).otherwise(f.col('prazo_esperado')))\
+        .withColumn('tipo_proposta', f.when(f.isnan(f.col('tipo_proposta'))\
+                                     & (f.col('produto').isin(['TOMATICO FIXO', 'B2W PMT FIXA', 'PAYPAL', 'BNDES', 'MOVILEPAY'])), 'fixo').otherwise(f.col('tipo_proposta')))\
+        .withColumn("tipo_proposta", f.when(f.isnan(f.col('tipo_proposta')), 'variavel').otherwise(f.col('tipo_proposta')))
+   
+   
+    #------Estes ids operacao estao duplicados em diferentes produtos, mas apenas uma operacao foi desembolsada------
+    df_operacoes = df_operacoes.filter(~((f.col("identificador") == '18944ef7-e065-46aa-830f-6d2f499b4bc7') & (f.col("produto") == "TOMATICO-VARIAVEL")))
+    df_operacoes = df_operacoes.filter(~((f.col("identificador") == '0021365e-0248-40ef-b57e-1811dd56bdef') & (f.col("produto") == "TOMATICO-VARIAVEL")))
+    
+    
+    #merge dataframes
+    df_liquidacao.createOrReplaceTempView("df_liquidacao")
+    df_operacoes.createOrReplaceTempView("df_operacoes")
+    df_pagamento_join = spark.sql("""SELECT a.identificador, a.data_pagamento, a.valor_face_liquidado, b.numero_documento, b.id_proposta
+                                    FROM df_liquidacao a 
+                                    LEFT JOIN df_operacoes b ON a.identificador = b.identificador""")
+    
+    df_pagamento_join = df_pagamento_join.withColumn("data_referencia", f.lit(datetime.now().date()))
+    
+    #------Pagamento desta operacao duplicada na base de propostas tambem esta duplicada nos dados de liquidacao------
+    df_aux = df_pagamento_join.filter(f.col("identificador") == '18944ef7-e065-46aa-830f-6d2f499b4bc7').dropDuplicates()
+    df_pagamento_filter = df_pagamento_join.filter(f.col("identificador") != '18944ef7-e065-46aa-830f-6d2f499b4bc7')
+
+    #merge dataframes
+    df_aux.createOrReplaceTempView("df_aux")
+    df_pagamento_filter.createOrReplaceTempView("df_pagamento_filter")
+    df_pagamento = spark.sql("""SELECT a.*, b.*
+                                    FROM df_pagamento_filter a 
+                                    LEFT JOIN df_aux b ON a.identificador = b.identificador""")
+    
+    #Verificando colunas
+    df_operacoes = df_operacoes.withColumn("periodicidade", f.when(df_operacoes.produto == 'B2W', 15)
+                                                            .when(df_operacoes.produto == 'B2W PMT FIXA', 15)
+                                                            .when(df_operacoes.produto == 'PAYPAL', 1)
+                                                            .when(df_operacoes.produto == 'TOMATICO-VARIAVEL', 30)
+                                                            .when(df_operacoes.produto == 'TOMATICO FIXO', 7)
+                                                            .when(df_operacoes.produto == 'ALELO', 30)
+                                                            .when(df_operacoes.produto == 'MOVILEPAY', 30)
+                                                            .when(df_operacoes.produto == 'BNDES', 7)
+                                                            .when(df_operacoes.produto == 'REDE', 30)
+                                                            .otherwise(df_operacoes.produto))
+
+    #Renomeando colunas
+    df_operacoes = df_operacoes\
+        .withColumnRenamed("tx_retencao_rating", "retencao_max")\
+        .withColumnRenamed("valor_maximo", "limite_credito_max")\
+        .withColumnRenamed("valor_minimo", "limite_credito_min")\
+        .withColumnRenamed("valor_presente", "valor_escolhido")\
+        .withColumnRenamed("retencao", "retencao_contratual")\
+        .withColumnRenamed("taxa", "taxa_juros_esperada_mensal")\
+        .withColumnRenamed("meses_analisados", "qtd_meses_faturamento")\
+        .withColumnRenamed("produto", "produto")\
+        .withColumnRenamed('data_cessao', 'data_cessao')\
+        .withColumnRenamed('numero_documento', 'numero_documento')\
+        .withColumnRenamed('data_vencimento', 'data_vencimento')\
+        .withColumnRenamed('valor_aquisicao', 'valor_aquisicao')\
+        .withColumnRenamed('valor_face', 'valor_face')\
+        .withColumnRenamed("fat_media", "faturamento_medio")
+    
+
+    # print('Salvando dados')
+    # #Salvando dados
+    # df_operacoes_select = df_operacoes.select('identificador', 'id_proposta', 'tipo_proposta', 'produto', 'numero_documento', 'score', 'retencao_max', 'limite_credito_max', 'limite_credito_min', 'data_cessao', 'data_vencimento', 'valor_escolhido', 'valor_aquisicao', 'valor_face', 'retencao_contratual', 'prazo_esperado', 'taxa_juros_esperada_mensal', 'custo_processamento', 'custo_fixo', 'custo_total', 'qtd_meses_faturamento', 'faturamento_medio', 'origem_dados', 'periodicidade', 'data_referencia')
+                                                                        
+    # #df_operacoes_select = df_operacoes.select(*list_information_schema)
+    
+    
+    # dyf = DynamicFrame.fromDF(df_operacoes_select, glueContext, 'dyf')
+    
+    
+    # delete_files('captalys-analytics-temporary', 'ivan/')
+    
+    # glueContext.write_dynamic_frame.from_options(
+    #             frame = dyf,
+    #             connection_type='s3',
+    #             connection_options = {"path": 's3://captalys-analytics-temporary/ivan/'},
+    #             format="csv",
+    #             format_options={
+    #                 "separator": "|"
+    #             }
+    #         )
+            
+    # print('Truncate stage')
+    # str_cmd_truncate = f"truncate table captalys_stage.carteira_varejo"
+    # exec_query_with_commit('asgard-redshift-production-stage-owner', str_cmd_truncate)
+    # print('Iniciando o copy')
+    # str_cmd_copy = f"""
+    # COPY captalys_stage.carteira_varejo ( identificador, id_proposta, tipo_proposta, produto, numero_documento, score, retencao_max, limite_credito_max, limite_credito_min, data_cessao, data_vencimento, valor_escolhido, valor_aquisicao, valor_face, retencao_contratual, prazo_esperado, taxa_juros_esperada_mensal, custo_processamento, custo_fixo, custo_total, qtd_meses_faturamento, faturamento_medio, origem_dados, periodicidade, data_referencia
+    # )
+    # FROM
+    #   's3://captalys-analytics-temporary/ivan/'
+    # IAM_ROLE 'arn:aws:iam::197342528744:role/CaptalysRedshiftCustomizable'
+    # DELIMITER as '|' FORMAT AS csv IGNOREHEADER 1;
+    # """
+    # exec_query_with_commit('asgard-redshift-production-stage-owner', str_cmd_copy)
+    # print('Finalizado o copy')
+    # # {cols_list_information_schema}
