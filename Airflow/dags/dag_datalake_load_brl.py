@@ -90,10 +90,9 @@ def notification(context):
 
     req.post(url, headers=headers, data=json.dumps(data))
 
-HOJE = '2022-06-30'
 
 with DAG(
-        dag_id='datalake_load_sftp_BRL',
+        dag_id='Datalake_V1_load_sftp_BRL',
         schedule_interval='1 * * * *',
         start_date=datetime(2022, 6, 29),
         default_args=default_args,
@@ -104,18 +103,18 @@ with DAG(
             'get_date_execution_template': get_date_execution,
         }
 ) as dag:
-    # task_redshift_createTable = RedshiftSQLOperator(
-    #     task_id='redshift_createTable',
-    #     sql="""
-    #         CREATE TABLE IF NOT EXISTS log.airflow_log (
-    #             id BIGINT IDENTITY(0, 1),
-    #             job_name VARCHAR NOT NULL,
-    #             inicio DATETIME NOT NULL,
-    #             fim DATETIME
-    #         );
-    #     """,
-    #     redshift_conn_id=redshift_conn_id
-    # )
+    task_redshift_createTable = RedshiftSQLOperator(
+        task_id='redshift_createTable',
+        sql="""
+            CREATE TABLE IF NOT EXISTS log.airflow_log (
+                id BIGINT IDENTITY(0, 1),
+                job_name VARCHAR NOT NULL,
+                inicio DATETIME NOT NULL,
+                fim DATETIME
+            );
+        """,
+        redshift_conn_id=redshift_conn_id
+    )
 
     for file_load in files:
         tasks_glueJob_raw.append(
@@ -126,8 +125,7 @@ with DAG(
                 script_location='s3://captalys-analyticsscripts-production/',
                 script_args={
                     '--domain': domain,
-                    '--date': HOJE,
-                    #'--date': '{{ get_date_execution_template(ds, dag_run.conf.get("data_customizada"), True) }}',
+                    '--date': '{{ get_date_execution_template(ds, dag_run.conf.get("data_customizada"), True) }}',
                     '--destination_bucket': raw_bucket,
                     '--file': file_load,
                     '--source_bucket': land_bucket,
@@ -138,22 +136,22 @@ with DAG(
             )
         )
 
-        # task_id = f"glueJob_raw_{file_load}"
-        # start_date = '''{{ dag_run.get_task_instance('%s').start_date}}''' % (task_id)
-        # end_date = '''{{ dag_run.get_task_instance('%s').end_date}}''' % (task_id)
-        #
-        # tasks_redshift_insert_glueJob_raw.append(
-        #     RedshiftSQLOperator(
-        #         task_id=f'redshift_insert_glueJob_raw_{file_load}',
-        #         sql=f"""
-        #             INSERT INTO log.airflow_log (job_name, inicio, fim) VALUES (
-        #                 '{task_id}',
-        #                 '{start_date}',
-        #                 '{end_date}'
-        #             );""",
-        #         redshift_conn_id=redshift_conn_id
-        #     )
-        # )
+        task_id = f"glueJob_raw_{file_load}"
+        start_date = '''{{ dag_run.get_task_instance('%s').start_date}}''' % (task_id)
+        end_date = '''{{ dag_run.get_task_instance('%s').end_date}}''' % (task_id)
+
+        tasks_redshift_insert_glueJob_raw.append(
+            RedshiftSQLOperator(
+                task_id=f'redshift_insert_glueJob_raw_{file_load}',
+                sql=f"""
+                    INSERT INTO log.airflow_log (job_name, inicio, fim) VALUES (
+                        '{task_id}',
+                        '{start_date}',
+                        '{end_date}'
+                    );""",
+                redshift_conn_id=redshift_conn_id
+            )
+        )
 
         tasks_glueJob_trusted.append(
             AwsGlueJobOperator(
@@ -163,8 +161,7 @@ with DAG(
                 script_location='s3://captalys-analyticsscripts-production/',
                 script_args={
                     '--domain': domain,
-                    #'--date': '{{ get_date_execution_template(ds, dag_run.conf.get("data_customizada"), True) }}',
-                    '--date': HOJE,
+                    '--date': '{{ get_date_execution_template(ds, dag_run.conf.get("data_customizada"), True) }}',
                     '--file': file_load,
                     '--land_bucket': land_bucket,
                     '--source_bucket': raw_bucket,
@@ -175,30 +172,30 @@ with DAG(
             )
         )
 
-    #     task_id = f"glueJob_trusted_{file_load}"
-    #     start_date = '''{{ dag_run.get_task_instance('%s').start_date}}''' % (task_id)
-    #     end_date = '''{{ dag_run.get_task_instance('%s').end_date}}''' % (task_id)
-    #
-    #     tasks_redshift_insert_glueJob_trusted.append(
-    #         RedshiftSQLOperator(
-    #             task_id=f'redshift_insert_glueJob_trusted_{file_load}',
-    #             sql=f"""
-    #                 INSERT INTO log.airflow_log (job_name, inicio, fim) VALUES (
-    #                     '{task_id}',
-    #                     '{start_date}',
-    #                     '{end_date}'
-    #                 );""",
-    #             redshift_conn_id=redshift_conn_id
-    #         )
-    #     )
-    #
-    # task_glueCrawler_raw_brl = AwsGlueCrawlerOperator(
-    #     task_id='glueCrawler_raw_brl',
-    #     config={
-    #         'Name': 'datalake-raw-brl'
-    #     },
-    #     aws_conn_id='datalake-aws-analytics'
-    # )
+        task_id = f"glueJob_trusted_{file_load}"
+        start_date = '''{{ dag_run.get_task_instance('%s').start_date}}''' % (task_id)
+        end_date = '''{{ dag_run.get_task_instance('%s').end_date}}''' % (task_id)
+
+        tasks_redshift_insert_glueJob_trusted.append(
+            RedshiftSQLOperator(
+                task_id=f'redshift_insert_glueJob_trusted_{file_load}',
+                sql=f"""
+                    INSERT INTO log.airflow_log (job_name, inicio, fim) VALUES (
+                        '{task_id}',
+                        '{start_date}',
+                        '{end_date}'
+                    );""",
+                redshift_conn_id=redshift_conn_id
+            )
+        )
+
+    task_glueCrawler_raw_brl = AwsGlueCrawlerOperator(
+        task_id='glueCrawler_raw_brl',
+        config={
+            'Name': 'datalake-raw-brl'
+        },
+        aws_conn_id='datalake-aws-analytics'
+    )
 
     # Download SFTP
     for prefix in lista_prefix:
@@ -218,8 +215,7 @@ with DAG(
                     '--path': path_doman,
                     '--prefix': prefix[0],
                     '--path_private_key': private_key,
-                    '--date': HOJE,
-                    #'--date': '{{ get_date_execution_template(ds, dag_run.conf.get("data_customizada"), True) }}',
+                    '--date': '{{ get_date_execution_template(ds, dag_run.conf.get("data_customizada"), True) }}',
                 },
                 aws_conn_id='datalake-aws-analytics',
                 region_name='sa-east-1'
@@ -241,8 +237,7 @@ with DAG(
                     '--domain': domain,
                     '--source': prefix[0],
                     '--destination': prefix[1],
-                    '--date': HOJE,
-                    #'--date': '{{ get_date_execution_template(ds, dag_run.conf.get("data_customizada"), True) }}',
+                    '--date': '{{ get_date_execution_template(ds, dag_run.conf.get("data_customizada"), True) }}',
                 },
                 aws_conn_id='datalake-aws-analytics',
                 region_name='sa-east-1'
@@ -252,17 +247,17 @@ with DAG(
         start_date = '''{{ dag_run.get_task_instance('%s').start_date}}''' % (task_id)
         end_date = '''{{ dag_run.get_task_instance('%s').end_date}}''' % (task_id)
 
-    # task_redshift_insert_glueCrawler_raw_brl = RedshiftSQLOperator(
-    #     task_id='redshift_insert_glueCrawler_raw_brl',
-    #     sql="""
-    #         INSERT INTO log.airflow_log (job_name, inicio, fim) VALUES (
-    #             'glueCrawler_raw_brl',
-    #             '{{ dag_run.get_task_instance('glueCrawler_raw_brl').start_date }}',
-    #             '{{ dag_run.get_task_instance('glueCrawler_raw_brl').end_date }}'
-    #         );
-    #     """,
-    #     redshift_conn_id=redshift_conn_id
-    # )
+    task_redshift_insert_glueCrawler_raw_brl = RedshiftSQLOperator(
+        task_id='redshift_insert_glueCrawler_raw_brl',
+        sql="""
+            INSERT INTO log.airflow_log (job_name, inicio, fim) VALUES (
+                'glueCrawler_raw_brl',
+                '{{ dag_run.get_task_instance('glueCrawler_raw_brl').start_date }}',
+                '{{ dag_run.get_task_instance('glueCrawler_raw_brl').end_date }}'
+            );
+        """,
+        redshift_conn_id=redshift_conn_id
+    )
 
     dummySeq01 = DummyOperator(
         task_id='dummySeq01'
@@ -272,37 +267,20 @@ with DAG(
         task_id='dummySeq02'
     )
 
-    dummySeq03 = DummyOperator(
-        task_id='dummySeq03'
-    )
-    dummySeq0 = DummyOperator(
-        task_id='dummySeq0'
-    )
-    # (
-    #         task_redshift_createTable
-    #         >> [tasks_glueJob_download_sftp[i] for i in range(len(tasks_glueJob_download_sftp))]
-    #         >> dummySeq01
-    #         >> [tasks_glueJob_unzip_file[i] for i in range(len(tasks_glueJob_unzip_file))]
-    #         >> dummySeq02
-    #         >> [tasks_redshift_insert_glueJob_raw[i] << tasks_glueJob_raw[i] for i in range(len(tasks_glueJob_raw))]
-    #         >> task_glueCrawler_raw_brl
-    #         >> [tasks_redshift_insert_glueJob_trusted[i] << tasks_glueJob_trusted[i] for i in
-    #             range(len(tasks_glueJob_trusted))]
-    # )
-    #
-    # task_glueCrawler_raw_brl >> task_redshift_insert_glueCrawler_raw_brl
-
 
     (
-            dummySeq0
+            task_redshift_createTable
             >> [tasks_glueJob_download_sftp[i] for i in range(len(tasks_glueJob_download_sftp))]
             >> dummySeq01
             >> [tasks_glueJob_unzip_file[i] for i in range(len(tasks_glueJob_unzip_file))]
             >> dummySeq02
-            >> [tasks_glueJob_raw[i] for i in range(len(tasks_glueJob_raw))]
-            >> dummySeq03
-            >> [tasks_glueJob_trusted[i] for i in
+            >> [tasks_redshift_insert_glueJob_raw[i] << tasks_glueJob_raw[i] for i in range(len(tasks_glueJob_raw))]
+            >> task_glueCrawler_raw_brl
+            >> [tasks_redshift_insert_glueJob_trusted[i] << tasks_glueJob_trusted[i] for i in
                 range(len(tasks_glueJob_trusted))]
     )
 
-    #task_glueCrawler_raw_brl >> task_redshift_insert_glueCrawler_raw_brl
+    task_glueCrawler_raw_brl >> task_redshift_insert_glueCrawler_raw_brl
+
+
+

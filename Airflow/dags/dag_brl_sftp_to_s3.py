@@ -81,7 +81,7 @@ def notification(context):
 
 
 with DAG(
-        dag_id='dag_brl_sftp_to_s3',
+        dag_id='Texte',
         schedule_interval='0 0 1 * *',
         start_date=datetime(2022, 6, 28),
         default_args=default_args,

@@ -1,9 +1,9 @@
 import boto3
 
 
-aws_access_key_id="ASIAS34UIATUPI4L7CPI"
-aws_secret_access_key="7slgruf3zUWo6pOPjG2I38c4nTdgZUJoqJUwNuA/"
-aws_session_token="IQoJb3JpZ2luX2VjEAYaCXNhLWVhc3QtMSJGMEQCIGAgeaAv2rpRfmjnKKiS2818lqaCgWjuNs4IWPyr33wMAiA2b/LO2Y+K2CEEWt2vcLkx9Mq9HMhAL2Hf2lTsw2EHoSqiAwgvEAEaDDE5NzM0MjUyODc0NCIMFQf1zDIPPuWzFBIgKv8CNwyk94jWGWLaKzyARXSjHSkJ1W/ApLnvn/Zy4LsJjDhVweMM+Y3OhsygoisiSNa2U/QDR+lSKGcu6o9RqF4obNhAEWVa6l16j83dvfAF7PK5l39S6JsEwT5OY12pbCXq1z91mjadKQv8GN7Yw3k9NC3OLV2VZG67N8tdAVisCmwRIv1O3bfcJ8r4abx+eCCukWgbhhmLsoDYkVNWPmnkuaHcpI9T7Ib/J7gjcxIDLxdkAoyL8i4N6gad9bvPYhvk1+tpxY2k5aNDPiC5gCy3GHBp5AiP03YdrUjJIvF0ntGyjFSJJbytJje+YvE1oYfO8cRj4daHXSPt1Vg5ly35Y8si5ZYcfLhQ6ybkzv3RR3mzSAOMPc4RuWutNvUYfFdTv52KtLz7WZJbVUVQl1WUDyzwoLtlv1nVY/bEHgJ3hc1sCo6hxqhoV/RjLt5aanmfFkl9WGQou5P147lCaqRORXTVUw9EJdWSb/p4xEbj14lUQNFDFv4jDny+mcHlixAw59D2lQY6pwEJqrlTc+3YiEj/+RlbkMg44inwY1bnf0bUlqj+Xa5iHZcnoyk4aJ3+6/n56RTiJlwR7mG39DBPXZQxAA443tIu4vKbsXaUW2RDFNwfUcmngMWnOCXGB1k5vYokNgT5e0yI4fXlsT2L4rt3stWPnweBYHCHPlGRmOca0Ivr20o+lPTpdcSmO8YX+HfDEvNJtPy0E0N1gmd0PJ0806/OpuvhwOwvHM0nGQ=="
+aws_access_key_id="ASIAS34UIATUAIPHGAVD"
+aws_secret_access_key="Mwfk25BulF1YniDsxmyafJ0ZPP8ajyA5A1uJoz9x"
+aws_session_token="IQoJb3JpZ2luX2VjECMaCXNhLWVhc3QtMSJHMEUCIBf8i9VBuvJxGUISrtgOhtlHsLqpy/of2GPewMGDh2FvAiEA08XG23m1mxEntmk0VA2v69aiaKPP6Vo1qLowlj0ViHQqogMITBABGgwxOTczNDI1Mjg3NDQiDDjkEclQMlZ81uQy+Sr/AmQ+1DDFkb+OQim1XyLsD3MjNF4H9MK0yZ2ZJWbGAZYujag69b/kGRltQ9IPyzTPyx4shL/D5/IqCY7XSAEUWV0FBvFEb8dVwTCBy3zJH34t3Ej2MrMswZgC2UWO+oZcF5F25DlD+FdybBdtwHH3loIOoXNKYi6Oxg/Hv6oyWgwRbESHD66ofddJXhDql3N6bGAGfAxtNJNJSPWhFRDUhXz48Q37RKs5hVteh23OQMRdOoGoyLcM9GOaw+JIdCAcrjBFXOw4xJgXo6BDLCFC67ONbz/VaaBD7Q7LCPcbB/EFo9Cun+fU7h6+C8UDlXQKW1lQzRKspn7MSOgqAn8MGOBxrAC64tKDTDih3WTERovtO2W0Ootar1AZj4HKwc4Cr+QcEv3f0rstzdZh/jIk8hd06O+tD6f8SKCj7RC9pHyMFZ/kQRd/sX8Gwtm/VB2qtnqZyfT/CkzX/TNHZW3R1K2qY1eHef+1wbVxPsr7PWWS9Ybeipfgj6kC26bMG1BAMM34/JUGOqYBRbFFno3ekrRJuhegTEw7jbno1HvWWmq3yLq0cjiyeXKL5KqGJj1OGQrher+yYMhAP81F5DTW87FVbijKDlw6Nl9O7uQbRfZhWV2WxC8AQHrqsn8Rg0KjrBGh/k08dL6xXenfcJperP5RmvtNHHdy97YcFSrqeJ1K5KcPv/TTW/y1Feq/pFFWXj9jvF1LyHsk6ioScngqJ/RlJeeiJbgWKMYFTFGnLQ=="
 glue_client = boto3.client(
     "glue",
     aws_access_key_id=aws_access_key_id,
@@ -13,8 +13,11 @@ glue_client = boto3.client(
 )
 
 listaGeral = [
+    '2022-06-25',
+    '2022-06-26',
+    '2022-06-27',
     '2022-06-28',
-    '2022-06-29'
+    '2022-06-29',
 
 ]
 
@@ -45,4 +48,5 @@ if __name__ == "__main__":
 
         glue_client.start_job_run(
             JobName='datalake-raw-brl',
+            #JobName='datalake-raw-vortx',
             Arguments=args)

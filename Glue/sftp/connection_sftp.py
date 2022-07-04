@@ -55,3 +55,4 @@ if __name__ == '__main__':
 # a = SftpConnector(brl_host, port, brl_username, brl_private_key)
 # a.brl_conection(blr_password)
 # a.vortx_conection()
+## https://www.cloudskillsboost.google/users/sign_up?locale=pt_BR
