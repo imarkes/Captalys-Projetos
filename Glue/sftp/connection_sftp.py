@@ -7,14 +7,14 @@ class SftpConnector:
         self.port = port
         self.__username = username
         self.__private_key = private_key
-        self.sftp_brl = None
-        self.sftp_vortex = None
+        self.sftp_conn_password = None
+        self.sftp_conn = None
 
     def default_connection(self):
         cnopts = pysftp.CnOpts()
         cnopts.hostkeys = None
 
-        self.sftp_vortex = pysftp.Connection(
+        self.sftp_conn = pysftp.Connection(
             host=self.hostname,
             username=self.__username,
             private_key=self.__private_key,
@@ -22,13 +22,13 @@ class SftpConnector:
             cnopts=cnopts
         )
         print("Connection succesfully SFTP... ")
-        return self.sftp_vortex
+        return self.sftp_conn
 
     def password_connection(self, password=None):
         cnopts = pysftp.CnOpts()
         cnopts.hostkeys = None
 
-        self.sftp_brl = pysftp.Connection(
+        self.sftp_conn_password = pysftp.Connection(
             host=self.hostname,
             username=self.__username,
             private_key_pass=password,
@@ -37,7 +37,7 @@ class SftpConnector:
             cnopts=cnopts
         )
         print("Connection succesfully SFTP ... ")
-        return self.sftp_brl
+        return self.sftp_conn_password
 
 
 # vortex_host = 'sftp.captalys.io'

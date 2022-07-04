@@ -73,50 +73,48 @@ glue_args = dict(
     username='socopa',
     private_key='/home/ivan/Captalys/Projetos/Docs/socopa-singulare.pem'
 )
-socopa = ExtractSftpSimgulare(glue_args['host'], glue_args['port'], glue_args['username'], glue_args['private_key'])
-socopa.singulare_list_path_files('singulare', 'estoque', '2022-07-01', 'estoque')
 
-# M = '07'
-# Y = '22'
-#
-# datas = [
-#     f'01-{M}-{Y}',
-#     f'02-{M}-{Y}',
-#     f'03-{M}-{Y}',
-#     # f'04-{M}-{Y}',
-#     # f'05-{M}-{Y}',
-#     # f'06-{M}-{Y}',
-#     # f'07-{M}-{Y}',
-#     # f'08-{M}-{Y}',
-#     # f'09-{M}-{Y}',
-#     # f'10-{M}-{Y}',
-#     # f'11-{M}-{Y}',
-#     # f'12-{M}-{Y}',
-#     # f'13-{M}-{Y}',
-#     # f'14-{M}-{Y}',
-#     # f'15-{M}-{Y}',
-#     # f'16-{M}-{Y}',
-#     # f'17-{M}-{Y}',
-#     # f'18-{M}-{Y}',
-#     # f'19-{M}-{Y}',
-#     # f'20-{M}-{Y}',
-#     # f'22-{M}-{Y}',
-#     # f'22-{M}-{Y}',
-#     # f'23-{M}-{Y}',
-#     # f'24-{M}-{Y}',
-#     # f'25-{M}-{Y}',
-#     # f'26-{M}-{Y}',
-#     # f'27-{M}-{Y}',
-#     # f'28-{M}-{Y}',
-#     # f'29-{M}-{Y}',
-#     # f'30-{M}-{Y}',
-#     # f'31-{M}-{Y}',
-# ]
+if __name__ == '__main__':
 
+    socopa = ExtractSftpSimgulare(glue_args['host'], glue_args['port'], glue_args['username'], glue_args['private_key'])
 
-# 'FIDC Merchant'
-# FIDC Onix
-# FIDC Citrino
+    M = '01'
+    Y = '2021'
 
+    datas = [
+        f'{Y}-{M}-01',
+        f'{Y}-{M}-02',
+        f'{Y}-{M}-03',
+        f'{Y}-{M}-04',
+        f'{Y}-{M}-05',
+        f'{Y}-{M}-06',
+        f'{Y}-{M}-07',
+        f'{Y}-{M}-08',
+        f'{Y}-{M}-09',
+        f'{Y}-{M}-10',
+        f'{Y}-{M}-11',
+        f'{Y}-{M}-12',
+        f'{Y}-{M}-13',
+        f'{Y}-{M}-14',
+        f'{Y}-{M}-15',
+        f'{Y}-{M}-16',
+        f'{Y}-{M}-17',
+        f'{Y}-{M}-18',
+        f'{Y}-{M}-19',
+        f'{Y}-{M}-20',
+        f'{Y}-{M}-22',
+        f'{Y}-{M}-22',
+        f'{Y}-{M}-23',
+        f'{Y}-{M}-24',
+        f'{Y}-{M}-25',
+        f'{Y}-{M}-26',
+        f'{Y}-{M}-27',
+        f'{Y}-{M}-28',
+        f'{Y}-{M}-29',
+        f'{Y}-{M}-30',
+        f'{Y}-{M}-31',
+    ]
 
-# for day in datas:
+    for day in datas:
+        print('Verificando dia: ', day)
+        socopa.singulare_list_path_files('singulare', 'estoque', day, 'estoque')
