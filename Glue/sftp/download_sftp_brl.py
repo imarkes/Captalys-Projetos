@@ -105,59 +105,6 @@ class ExtractSftpBrl:
             print(f'Arquivos do dia: {day}, vazios')
 
 
-class ExtractSftpVortx:
-    def __init__(self, hostname=None, port=None, username=None, private_key=None, password=None):
-        self.__conn = SftpConnector(hostname=hostname, port=port, username=username, private_key=private_key)
-        self.vortex = self.__conn.vortx_conection()
-        self.__password = password
-        self.list_files = []
-        self.s3_file_name = []
-
-    def vortx_list_path_files(self, adm: str, path: str, fidc: str, folder: str, *args):
-
-        path_s3_brl_files_prefix = f'{adm}/data/sftp/v1/zip/generic/'
-        sub_folder = args[0].lower()
-        day = args[1].replace('-', '.')
-        period = day.split(".")
-        prefix = args[2].split()[0].upper()
-
-        with self.vortex.cd(f'{fidc}/{folder.capitalize()}/{sub_folder}'):
-            directory_structure = self.vortex.listdir_attr()
-            print(f'Arquivos no path: {adm.lower()}{self.vortex.pwd}')
-
-            # Lista os arquivos no diretorio
-            for attr in directory_structure:
-                try:
-                    if (day in attr.filename) and (prefix.upper() in attr.filename):
-                        # and (f'.{ext}' in attr.filename):
-
-                        self.list_files.append(attr.filename)
-                        self.s3_file_name.append(
-                            f'{path_s3_brl_files_prefix}{prefix.lower()}/'
-                            f'{period[0]}/{period[1]}/{period[2]}'
-                            f'/{attr.filename}')
-
-                except FileNotFoundError as e:
-                    print('Erro: Arquivos não encontrados com os parametros informados ', e)
-
-            # Cria o diretorio raiz
-            print(self.s3_file_name)
-            if not os.path.exists(f'{adm}_{path}_{fidc}_{folder}_{day}'):
-                os.makedirs(f'{adm}_{fidc}_{path}_{day}')
-            os.chdir(f'{adm}_{fidc}_{path}_{day}')
-
-            # Cria o sub diretorio
-            if not os.path.exists(f'{fidc}_{prefix.lower()}_{day}'):
-                os.makedirs(f'{fidc}_{prefix.lower()}_{day}')
-            os.chdir(f'{fidc}_{prefix.lower()}_{day}')
-
-            # Baixa os arquivos
-            for file in self.list_files:
-                databytes = self.vortex.get(file, preserve_mtime=True)
-                print(type(databytes))
-                print(databytes)
-
-
 if __name__ == "__main__":
     str_key = get_text_by_key('captalys-analytics-land-production', 'brl/Key/sftp/v1/key-pem/acessoBRL.pem')
     private_key_file = StringIO()
@@ -171,15 +118,11 @@ if __name__ == "__main__":
     # liqbaix, aquisicoes, estoquediario
     brl.brl_list_path_files('brl', 'estoque_diario', '2022-06-28', 'aquisicoes')
 
-
 # vortx = ExtractSftpVortx(vortex_host, port, vortex_username, vortex_private_key)
 # vortx.vortx_list_path_files('vortx', 'ftp-vortx', 'FIDC Citrino', 'estoque', 'processados', '18-10-21', 'citrino')
 
 
-# vortex_host = "sftp.captalys.io"
-# vortex_username = "vortx"
-# vortex_private_key = "/home/ivan/Dev/glue_jobs/sftp/vortx_rsa.dat"
-# port = 22
+
 #
 # brl_host = 'sftran.brltrust.com.br'
 # brl_username = 'captalys'

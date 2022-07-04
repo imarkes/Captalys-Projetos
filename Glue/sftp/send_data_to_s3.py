@@ -52,16 +52,6 @@ def upload_sftp_files(adm=None, data=None, path=None, docs=None):
                 print('Enviando: ', key_str_filename)
                 send_data_to_s3(databytes, key_str_filename)
 
-    elif adm == 'brl':
-        data_path = data.replace("-", "/")
-        for file in os.listdir(path):
-            if data in file:
-                key_str_filename = f"{adm}/data/sftp/v1/csv/lake/{docs}/{data_path}/{file}"
-                filename = path + file
-                f = open(filename, 'rb')
-                databytes = f.read()
-                # send_data_to_s3(databytes, key_str_filename)
-
 
 path = '/home/ivan/Documentos/vortex/'
 
