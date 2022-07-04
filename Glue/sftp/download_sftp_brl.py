@@ -63,7 +63,7 @@ class ExtractSftpBrl:
     def __init__(self, hostname=None, port=None, username=None, private_key=None, password=None):
         self.__conn = SftpConnector(hostname=hostname, port=port, username=username, private_key=private_key)
         self.__password = password
-        self.brl = self.__conn.brl_conection(self.__password)
+        self.brl = self.__conn.password_connection(self.__password)
         self.s3_files_data = {}
 
     def brl_list_path_files(self, adm: str, path: str, day: str, prefix: str):

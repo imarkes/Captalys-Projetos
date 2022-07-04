@@ -40,81 +40,83 @@ def get_text_by_key(bucket_name, key):
     return text
 
 
-class ExtractSftpVortx:
+class ExtractSftpSimgulare:
     def __init__(self, hostname=None, port=None, username=None, private_key=None, password=None):
         self.__conn = SftpConnector(hostname=hostname, port=port, username=username, private_key=private_key)
-        self.vortex = self.__conn.default_connection()
+        self.singulare = self.__conn.default_connection()
         self.__password = password
-        self.s3_files_data = {}
 
-    def vortx_list_path_files(self, domain: str, fidc: str, folder: str, data: str, docs=None):
-        days = data.split('-')[0]
-        month = data.split('-')[1]
-        year = data.split('-')[2]
-        new = data.replace('-', '.')
+    def singulare_list_path_files(self, domain: str, folder: str, date: str, docs=None):
 
-        with self.vortex.cd(f'/ftp-vortx/{fidc}/{folder.capitalize()}/processados/'):
+        days = date.split('-')[2]
+        month = date.split('-')[1]
+        year = date.split('-')[0]
+        str_date = date.replace('-', '')
 
-            for filename in self.vortex.listdir():
-                if (new in filename) and (docs.capitalize() in filename):
-                    key_str_filename = f"{domain}/data/sftp/v1/xlsx/lake/{folder}/20{year}/{month}/{days}/{filename}"
+        # /sftp-captalys/SIMPLIC/ESTOQUE
+        self.singulare.cd(f'/sftp-captalys/SIMPLIC/{folder.upper()}')
 
-                    flo = BytesIO()
-                    buffer = self.vortex.getfo(f'/ftp-vortx/{fidc}/{folder.capitalize()}/processados/{filename}', flo)
-                    flo.seek(0)
-                    print('Enviando: ', key_str_filename)
-                    send_data_to_s3(flo, key_str_filename)
+        for filename in self.singulare.listdir():
+            if (str_date in filename) and (docs.upper() in filename):
+                key_str_filename = f"{domain}/data/sftp/v1/csv/lake/{folder}/{year}/{month}/{days}/{filename}"
 
-
-vortex_host = 'sftp.captalys.io'
-vortex_username = 'vortx'
-vortex_private_key = "/home/ivan/Captalys/Projetos/Docs/vortx_rsa.dat"
-port = 22
-
-vortx = ExtractSftpVortx(vortex_host, port, vortex_username, vortex_private_key)
-
-M = '07'
-Y = '22'
-
-datas = [
-    f'01-{M}-{Y}',
-    f'02-{M}-{Y}',
-    f'03-{M}-{Y}',
-    # f'04-{M}-{Y}',
-    # f'05-{M}-{Y}',
-    # f'06-{M}-{Y}',
-    # f'07-{M}-{Y}',
-    # f'08-{M}-{Y}',
-    # f'09-{M}-{Y}',
-    # f'10-{M}-{Y}',
-    # f'11-{M}-{Y}',
-    # f'12-{M}-{Y}',
-    # f'13-{M}-{Y}',
-    # f'14-{M}-{Y}',
-    # f'15-{M}-{Y}',
-    # f'16-{M}-{Y}',
-    # f'17-{M}-{Y}',
-    # f'18-{M}-{Y}',
-    # f'19-{M}-{Y}',
-    # f'20-{M}-{Y}',
-    # f'22-{M}-{Y}',
-    # f'22-{M}-{Y}',
-    # f'23-{M}-{Y}',
-    # f'24-{M}-{Y}',
-    # f'25-{M}-{Y}',
-    # f'26-{M}-{Y}',
-    # f'27-{M}-{Y}',
-    # f'28-{M}-{Y}',
-    # f'29-{M}-{Y}',
-    # f'30-{M}-{Y}',
-    # f'31-{M}-{Y}',
-]
+                flo = BytesIO()
+                buffer = self.singulare.getfo(f'/sftp-captalys/SIMPLIC/{folder.upper()}/{filename}', flo)
+                flo.seek(0)
+                print('Enviando: ', key_str_filename)
+                send_data_to_s3(flo, key_str_filename)
 
 
-#'FIDC Merchant'
+glue_args = dict(
+    host='sftp.captalys.io',
+    port=22,
+    username='socopa',
+    private_key='/home/ivan/Captalys/Projetos/Docs/socopa-singulare.pem'
+)
+socopa = ExtractSftpSimgulare(glue_args['host'], glue_args['port'], glue_args['username'], glue_args['private_key'])
+socopa.singulare_list_path_files('singulare', 'estoque', '2022-07-01', 'estoque')
+
+# M = '07'
+# Y = '22'
+#
+# datas = [
+#     f'01-{M}-{Y}',
+#     f'02-{M}-{Y}',
+#     f'03-{M}-{Y}',
+#     # f'04-{M}-{Y}',
+#     # f'05-{M}-{Y}',
+#     # f'06-{M}-{Y}',
+#     # f'07-{M}-{Y}',
+#     # f'08-{M}-{Y}',
+#     # f'09-{M}-{Y}',
+#     # f'10-{M}-{Y}',
+#     # f'11-{M}-{Y}',
+#     # f'12-{M}-{Y}',
+#     # f'13-{M}-{Y}',
+#     # f'14-{M}-{Y}',
+#     # f'15-{M}-{Y}',
+#     # f'16-{M}-{Y}',
+#     # f'17-{M}-{Y}',
+#     # f'18-{M}-{Y}',
+#     # f'19-{M}-{Y}',
+#     # f'20-{M}-{Y}',
+#     # f'22-{M}-{Y}',
+#     # f'22-{M}-{Y}',
+#     # f'23-{M}-{Y}',
+#     # f'24-{M}-{Y}',
+#     # f'25-{M}-{Y}',
+#     # f'26-{M}-{Y}',
+#     # f'27-{M}-{Y}',
+#     # f'28-{M}-{Y}',
+#     # f'29-{M}-{Y}',
+#     # f'30-{M}-{Y}',
+#     # f'31-{M}-{Y}',
+# ]
+
+
+# 'FIDC Merchant'
 # FIDC Onix
 # FIDC Citrino
 
 
-for day in datas:
-    vortx.vortx_list_path_files('vortx', 'FIDC Onix', 'estoque', day, 'estoque')
+# for day in datas:

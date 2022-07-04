@@ -26,7 +26,7 @@ if __name__ == "__main__":
             'class': 'GlueApp',
             'date': i,
             'destination_bucket': 'captalys-analytics-raw-production',
-            'domain': 'brl',
+            'domain': 'vortx',
             'file': 'estoque',
             'source_bucket': 'captalys-analytics-land-production',
             'technology': 'sftp'
@@ -45,6 +45,6 @@ if __name__ == "__main__":
         print(args)
 
         glue_client.start_job_run(
-            JobName='datalake-raw-brl',
-            #JobName='datalake-raw-vortx',
+            #JobName='datalake-raw-brl',
+            JobName='datalake-raw-vortx',
             Arguments=args)

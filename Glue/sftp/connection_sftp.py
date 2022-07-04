@@ -10,7 +10,7 @@ class SftpConnector:
         self.sftp_brl = None
         self.sftp_vortex = None
 
-    def vortx_conection(self):
+    def default_connection(self):
         cnopts = pysftp.CnOpts()
         cnopts.hostkeys = None
 
@@ -18,13 +18,13 @@ class SftpConnector:
             host=self.hostname,
             username=self.__username,
             private_key=self.__private_key,
-            port=port,
+            port=22,
             cnopts=cnopts
         )
-        print("Connection succesfully SFTP_Vortex ... ")
+        print("Connection succesfully SFTP... ")
         return self.sftp_vortex
 
-    def brl_conection(self, password=None):
+    def password_connection(self, password=None):
         cnopts = pysftp.CnOpts()
         cnopts.hostkeys = None
 
@@ -33,22 +33,22 @@ class SftpConnector:
             username=self.__username,
             private_key_pass=password,
             private_key=self.__private_key,
-            port=port,
+            port=22,
             cnopts=cnopts
         )
-        print("Connection succesfully SFTP_BRL... ")
+        print("Connection succesfully SFTP ... ")
         return self.sftp_brl
 
 
-vortex_host = 'sftp.captalys.io'
-vortex_username = 'vortx'
-vortex_private_key = "/home/ivan/Dev/glue_jobs/sftp/vortx_rsa.dat"
-port = 22
-
-brl_host = 'sftran.brltrust.com.br'
-brl_username = 'captalys'
-brl_private_key = "/home/ivan/Dev/glue_jobs/sftp/acessoBRL.pem"
-blr_password = "w@ferreira5"
+# vortex_host = 'sftp.captalys.io'
+# vortex_username = 'vortx'
+# vortex_private_key = "/home/ivan/Dev/glue_jobs/sftp/vortx_rsa.dat"
+# port = 22
+#
+# brl_host = 'sftran.brltrust.com.br'
+# brl_username = 'captalys'
+# brl_private_key = "/home/ivan/Dev/glue_jobs/sftp/acessoBRL.pem"
+# blr_password = "w@ferreira5"
 
 if __name__ == '__main__':
     ...
