@@ -1,9 +1,10 @@
 import boto3
 
 
-aws_access_key_id = "ASIAS34UIATUAZRP4JJP"
-aws_secret_access_key = "yr0zJXgu4zx9yZrb/6cX/J0GWFyc6gDebHqwY0Aa"
-aws_session_token = "IQoJb3JpZ2luX2VjEGYaCXNhLWVhc3QtMSJGMEQCICASryxV81eMQoQ8uGCt6Zi/oC78zHgO+dHasH5uap7MAiA8aF3VZfnfCI5pIMGZtdHsnLRfISRCUf6cCQIzFyc6LCqrAwiP//////////8BEAEaDDE5NzM0MjUyODc0NCIMQAuraDLUGdfjU8PYKv8CKOQekyHrhkkr09Wg9kcR6Hf15Mc1Vv8Vmm0ga4KxTuGi/F2IwB3+OPm6jJv3Z294MeTJWEhrrFsdKdvwDkuRvNk5lzkrPu71ZT/LT4WmWEWKlomtXvKkkeoibmpmvPo9NalY8DyORwXP2+0zQVj6z+xhq8oZRGY2mb+qMxZuGNwLbj3mM902V2BCTx84M7VB2ALSmXv+zdTSbgTwxGr9xjIOmekRfQAiw+EXH7KFeufLHGzJkAaTSHSDhenBuC6XLH9eeoKm/9zlwwmIHfXvzsaTtN6IPwC1LKeJ0PZ5Psrjy9ymM4lVO2sQ38jGA0InC1kD5eNrkTUhaDjAwELEXegHZOlO5B9iH0ByzKrSjQcwK9RkiZJOU5YbtFUT1fofN7+Ys6JqNo4xDt4t5nYWlXExfS8DbiXFn6As34DIR2JpWGqfFscUf/ywkQ+EYDsPKiOLDk640qQonwyq/V6ZwuUFQfCphEkdiyt+97jaRklmm2eGON7vcZqjG4vCxhYw6NiLlgY6pwFgIq5oDF5CgKrx9k8VNHGwZn5h4OVrcpgPv+OghmnQ13YnvVpbRvNBt+l9uZVzA+CwPpVqF0MZK5voD+yYjLJ4ZZV+C6Ixdd2DXnSAjjKZLhIjBn7vjEavjBEYB6FryEH12vRtxoOhHH/36FBy4kjOCkF4Q/BJ+DLitX/ht26tAqw+anCHU7D7oD1BqBDY+zn5Ivja36NnicJNTP9uSMcVt0n0VpeR1A=="
+
+aws_access_key_id="ASIAS34UIATUPTIZ3DF3"
+aws_secret_access_key="E8ECtFLiID4My82CcZjFq00wmscuUwD+Z3qLX+4v"
+aws_session_token="IQoJb3JpZ2luX2VjEJb//////////wEaCXNhLWVhc3QtMSJGMEQCIC71FKudgmJ0+3j+VH3qbsXXTUZ/BYXlrHX12Vhk/8MtAiAkhIwZOsKx69bgh7QBTGGvm7upl8zKXXLESod4/SPR0SqrAwi///////////8BEAEaDDE5NzM0MjUyODc0NCIM5IDO9JvbzyUSqw5WKv8CuUwD1M1M/kdysyPe/auVD8sRqf0KQAySVvfDxBlYBCh1kIdVZfXeNLMFnIfQV+XxP813MzULVWW3WO4swWRMY9W7ONwjCCuuFKbaFW/iC319PeX3C0NBQXvPrF3KzYmyiVFsT5SAt77yXDWKKHkh2NctYnHOhgw8jmSEk1yUvTypbpqZynz+15QsIc/0Wl0goGpZgQnSrOiXSrbS91nuSWew/mFRwsebrxgHG1jRDjmlvcYiJclcW/h+pIAjl0txRCuB79/ylaBGzfiGSZMfI9OEPUq3wyUdnoEQXJ3ncZKgrqWlLLg80M6Gv6YmDt3KDllbeFeLBLBZoQeKdr9vn/SYAiGdZ3kVkdwhnH3Y9YqX1ntzZaUsGwfdDDvQR+LovAzegqz1D3fv8LKyNrYwBwR6me3EKn6qpfWT+CA7Qv/C7/9pY6cBBLhRDyfFdC6z44hi2upTdxfqZcshsSX/EIcnlR/pf/xtemxytVVxBMH/EVnif0wI390YKUtAbwww1p2WlgY6pwF/L1KNI7fssVwMv4tAdVTmVuYU91+ps6niPbGjzx6bX7k6q1y7icHf99dCqWQsfRvZ+8mt7S2g29bw6a4ACcm0QBf+yiC81DpIxb072LYEOZ2n9a76QQuiQzrS5tUaZpY9n9dZ2xG8ApXEiMD2eYWQiRNvBYU3qDZBfK8MTOwXcWsfa6Fjmvg70mFUF7Yd7eDSLg2rXVmntUH872G+k62+FFem3igtFA=="
 
 glue_client = boto3.client(
     "glue",
@@ -14,8 +15,7 @@ glue_client = boto3.client(
 )
 
 listaGeral = [
-    '2022-06-30',
-    '2022-07-01'
+    '2022-07-04'
 
 ]
 
@@ -26,7 +26,7 @@ if __name__ == "__main__":
             'class': 'GlueApp',
             'date': i,
             'destination_bucket': 'captalys-analytics-raw-production',
-            'domain': 'vortx',
+            'domain': 'singulare',
             'file': 'estoque',
             'source_bucket': 'captalys-analytics-land-production',
             'technology': 'sftp'
@@ -46,5 +46,6 @@ if __name__ == "__main__":
 
         glue_client.start_job_run(
             #JobName='datalake-raw-brl',
-            JobName='datalake-raw-vortx',
+            #JobName='datalake-raw-vortx',
+            JobName='datalake-land_to_raw-singulare',
             Arguments=args)

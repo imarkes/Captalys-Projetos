@@ -118,12 +118,7 @@ if __name__ == "__main__":
     # liqbaix, aquisicoes, estoquediario
     brl.brl_list_path_files('brl', 'estoque_diario', '2022-06-28', 'aquisicoes')
 
-# vortx = ExtractSftpVortx(vortex_host, port, vortex_username, vortex_private_key)
-# vortx.vortx_list_path_files('vortx', 'ftp-vortx', 'FIDC Citrino', 'estoque', 'processados', '18-10-21', 'citrino')
 
-
-
-#
 # brl_host = 'sftran.brltrust.com.br'
 # brl_username = 'captalys'
 # brl_private_key = "/home/ivan/Dev/glue_jobs/sftp/acessoBRL.pem"
