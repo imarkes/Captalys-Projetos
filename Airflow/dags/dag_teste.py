@@ -9,7 +9,7 @@ default_args = {
 }
 
 with DAG(
-        dag_id='DAG-Bash-01',
+        dag_id='DAG-Estudos-01',
         default_args=default_args,
         description='Task para testar o bash operator',
         start_date=datetime(2022, 5, 12),

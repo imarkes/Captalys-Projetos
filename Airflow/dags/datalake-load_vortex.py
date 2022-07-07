@@ -1,0 +1,279 @@
+from datetime import datetime, timedelta
+
+# The DAG object
+from airflow import DAG
+from airflow.models.variable import Variable
+
+# Operators
+from airflow.providers.amazon.aws.operators.glue import AwsGlueJobOperator
+from airflow.providers.amazon.aws.operators.glue_crawler import AwsGlueCrawlerOperator
+from airflow.providers.amazon.aws.operators.redshift import RedshiftSQLOperator
+from airflow.operators.dummy_operator import DummyOperator
+
+# Redshift Variable
+redshift_conn_id = 'data-redshift'
+
+# AWS Glue Variable
+land_bucket = 'captalys-analytics-land-{{var.value.aws_environment}}'
+raw_bucket = 'captalys-analytics-raw-{{var.value.aws_environment}}'
+domain = 'vortx'
+technology = 'sftp'
+port = '22'
+hostname = '{{var.value.vortx_hostname}}'
+username = '{{var.value.vortx_username}}'
+path_domain = 'estoque_diario'
+
+files = [
+    'estoque',
+    'liquidacao',
+    'aquisicao'
+]
+
+# lista_prefix = []
+lista_prefix = [
+    ['FIDC Citrino', 'estoque', 'FIDCCitrino'],
+    ['FIDC Merchant', 'estoque', 'FIDCMerchant'],
+    ['FIDC Onix', 'estoque', 'FIDCOnix']
+]
+
+
+def get_date_execution(str_date_logical, str_date_params, check_date_atual):
+    if str_date_params is not None:
+        return str_date_params
+    else:
+        date_logical = datetime.strptime(str_date_logical, "%Y-%m-%d").date()
+        if check_date_atual and date_logical >= datetime.today().date():
+            t_days = timedelta(days=1)
+            sub_date_logical = date_logical - t_days
+            return sub_date_logical.strftime("%Y-%m-%d")
+        else:
+            return str_date_logical
+
+
+# "{{ get_date_execution_template(ds, dag_run.conf.get('data_customizada'), True) }}"
+# date = '{{ds}}'
+
+tasks_glueJob_raw = []
+tasks_redshift_insert_glueJob_raw = []
+tasks_glueJob_trusted = []
+tasks_redshift_insert_glueJob_trusted = []
+tasks_glueJob_download_sftp = []
+tasks_glueJob_xlsx_to_csv_file = []
+
+default_args = {
+    'owner': 'Wanderson Colatino',
+    'email': ['alertas.datalake@captalys.com.br'],
+    'depends_on_past': False,
+    'email_on_failure': False,
+    'email_on_retry': False,
+    'email_on_success': False,
+    'retries': 2,
+    'retry_delay': timedelta(minutes=30)
+}
+
+
+def notification(context):
+    import requests as req
+    import json
+
+    url = 'https://us-central1-roxpartner-core.cloudfunctions.net/open_ticket_movidesk'
+
+    headers = {'Content-Type': 'application/json'}
+
+    data = {
+        'subject': 'Error on DAG datalake_load_dms_cci in client Captalys',
+        'error_msg': 'Error on DAG datalake_load_dms_cci',
+        'username_client': 'xdatalake@captalys.com.br'
+    }
+
+    req.post(url, headers=headers, data=json.dumps(data))
+
+
+with DAG(
+        dag_id='datalake_v1_load_vortx',
+        schedule_interval='1 * * * *',
+        start_date=datetime(2022, 6, 29),
+        default_args=default_args,
+        catchup=False,
+        on_failure_callback=notification,
+        tags=['captalys', 'datalake', 'sftp', 'vortx', 'xlsx_to_csv'],
+        user_defined_macros={
+            'get_date_execution_template': get_date_execution
+        }
+) as dag:
+    task_redshift_createTable = RedshiftSQLOperator(
+        task_id='redshift_createTable',
+        sql="""
+            CREATE TABLE IF NOT EXISTS log.airflow_log (
+                id BIGINT IDENTITY(0, 1),
+                job_name VARCHAR NOT NULL,
+                inicio DATETIME NOT NULL,
+                fim DATETIME
+            );
+        """,
+        redshift_conn_id=redshift_conn_id
+    )
+
+    for file_load in files:
+
+        tasks_glueJob_xlsx_to_csv_file.append(
+            AwsGlueJobOperator(
+                task_id=f"glueJob_xlsx_to_csv_{file_load}",
+                pool='datalake_glueJob',
+                job_name='	datalake-vortx-xlsx-to-csv',
+                script_location='s3://captalys-analyticsscripts-production/',
+                script_args={
+                    '--date': '{{ get_date_execution_template(ds, dag_run.conf.get("data_customizada"), True) }}',
+                    '--domain': domain,
+                    '--file': file_load,
+                    '--land_bucket': land_bucket,
+                    '--technology': technology
+                },
+                aws_conn_id='datalake-aws-analytics',
+                region_name='sa-east-1'
+            )
+        )
+        task_id = f"glueJob_xlsx_to_csv_{file_load}"
+        start_date = '''{{ dag_run.get_task_instance('%s').start_date}}''' % (task_id)
+        end_date = '''{{ dag_run.get_task_instance('%s').end_date}}''' % (task_id)
+
+        tasks_glueJob_raw.append(
+            AwsGlueJobOperator(
+                task_id=f"glueJob_raw_{file_load}",
+                pool='datalake_glueJob',
+                job_name='datalake-raw-vortx',
+                script_location='s3://captalys-analyticsscripts-production/',
+                script_args={
+                    '--domain': domain,
+                    '--date': '{{ get_date_execution_template(ds, dag_run.conf.get("data_customizada"), True) }}',
+                    '--destination_bucket': raw_bucket,
+                    '--file': file_load,
+                    '--source_bucket': land_bucket,
+                    '--technology': technology
+                },
+                aws_conn_id='datalake-aws-analytics',
+                region_name='sa-east-1'
+            )
+        )
+
+        task_id = f"glueJob_raw_{file_load}"
+        start_date = '''{{ dag_run.get_task_instance('%s').start_date}}''' % (task_id)
+        end_date = '''{{ dag_run.get_task_instance('%s').end_date}}''' % (task_id)
+
+        tasks_redshift_insert_glueJob_raw.append(
+            RedshiftSQLOperator(
+                task_id=f'redshift_insert_glueJob_raw_{file_load}',
+                sql=f"""
+                            INSERT INTO log.airflow_log (job_name, inicio, fim) VALUES (
+                                '{task_id}',
+                                '{start_date}',
+                                '{end_date}'
+                            );""",
+                redshift_conn_id=redshift_conn_id
+            )
+        )
+
+        tasks_glueJob_trusted.append(
+            AwsGlueJobOperator(
+                task_id=f"glueJob_trusted_{file_load}",
+                pool='datalake_glueJob',
+                job_name='datalake-trusted-vortx',
+                script_location='s3://captalys-analyticsscripts-production/',
+                script_args={
+                    '--domain': domain,
+                    '--date': '{{ get_date_execution_template(ds, dag_run.conf.get("data_customizada"), True) }}',
+                    '--file': file_load,
+                    '--land_bucket': land_bucket,
+                    '--source_bucket': raw_bucket,
+                    '--technology': technology
+                },
+                aws_conn_id='datalake-aws-analytics',
+                region_name='sa-east-1'
+            )
+        )
+
+        task_id = f"glueJob_trusted_{file_load}"
+        start_date = '''{{ dag_run.get_task_instance('%s').start_date}}''' % (task_id)
+        end_date = '''{{ dag_run.get_task_instance('%s').end_date}}''' % (task_id)
+
+        tasks_redshift_insert_glueJob_trusted.append(
+            RedshiftSQLOperator(
+                task_id=f'redshift_insert_glueJob_trusted_{file_load}',
+                sql=f"""
+                            INSERT INTO log.airflow_log (job_name, inicio, fim) VALUES (
+                                '{task_id}',
+                                '{start_date}',
+                                '{end_date}'
+                            );""",
+                redshift_conn_id=redshift_conn_id
+            )
+        )
+
+    task_glueCrawler_raw_vortx = AwsGlueCrawlerOperator(
+        task_id='glueCrawler_raw_vortx',
+        config={
+            'Name': 'datalake-raw-vortx'
+        },
+        aws_conn_id='datalake-aws-analytics'
+    )
+
+    # Download SFTP
+    for prefix in lista_prefix:
+        tasks_glueJob_download_sftp.append(
+            AwsGlueJobOperator(
+                task_id=f"glueJob_download_sftp_{prefix[2]}_{prefix[1]}",
+                pool='datalake_glueJob',
+                job_name='datalake-sftp-down-vortx',
+                script_location='s3://captalys-analyticsscripts-production/',
+                script_args={
+                    '--host': hostname,
+                    '--username': username,
+                    '--port': port,
+                    '--bucket_name': land_bucket,
+                    '--domain': domain,
+                    '--docs': prefix[1],
+                    '--folder': prefix[1],
+                    '--fidc': prefix[0],
+                    '--data': '{{ get_date_execution_template(ds, dag_run.conf.get("data_customizada"), True) }}'
+                },
+                aws_conn_id='datalake-aws-analytics',
+                region_name='sa-east-1'
+            )
+        )
+        task_id = f"glueJob_download_sftp_{prefix[2]}_{prefix[1]}"
+        start_date = '''{{ dag_run.get_task_instance('%s').start_date}}''' % (task_id)
+        end_date = '''{{ dag_run.get_task_instance('%s').end_date}}''' % (task_id)
+
+    task_redshift_insert_glueCrawler_raw_vortx = RedshiftSQLOperator(
+        task_id='redshift_insert_glueCrawler_raw_vortx',
+        sql="""
+                INSERT INTO log.airflow_log (job_name, inicio, fim) VALUES (
+                    'glueCrawler_raw_vortx',
+                    '{{ dag_run.get_task_instance('glueCrawler_raw_vortx').start_date }}',
+                    '{{ dag_run.get_task_instance('glueCrawler_raw_vortx').end_date }}'
+                );
+            """,
+        redshift_conn_id=redshift_conn_id
+    )
+
+    dummySeq01 = DummyOperator(
+        task_id='dummySeq01'
+    )
+
+    dummySeq02 = DummyOperator(
+        task_id='dummySeq02'
+    )
+
+    (
+            task_redshift_createTable
+            >> [tasks_glueJob_download_sftp[i] for i in range(len(tasks_glueJob_download_sftp))]
+            >> dummySeq01
+            >> [tasks_glueJob_xlsx_to_csv_file[i] for i in range(len(tasks_glueJob_xlsx_to_csv_file))]
+            >> dummySeq02
+            >> [tasks_redshift_insert_glueJob_raw[i] << tasks_glueJob_raw[i] for i in range(len(tasks_glueJob_raw))]
+            >> task_glueCrawler_raw_vortx
+            >> [tasks_redshift_insert_glueJob_trusted[i] << tasks_glueJob_trusted[i] for i in
+                range(len(tasks_glueJob_trusted))]
+    )
+
+    task_glueCrawler_raw_vortx >> task_redshift_insert_glueCrawler_raw_vortx
