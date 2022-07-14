@@ -1,9 +1,6 @@
 # -*- coding: utf-8
-from io import BytesIO, StringIO
+from datetime import timedelta, datetime
 import boto3
-import os
-import paramiko as paramiko
-from connection_sftp import SftpConnector
 
 aws_access_key_id = "ASIAS34UIATUE2CWSRVV"
 aws_secret_access_key = "p4d+DZE+qMpicp4v3KOHP5PQtWRhZiISrJhv3Pia"
@@ -24,11 +21,12 @@ glue_client = boto3.client(
 
 glue_args = dict(
     dest_bucket="captalys-analytics-land-production",
-    source_buket='captalys-analytics-adms-production',
-    date='2022-07-11',
-    file='aquisicao',
+    source_bucket='captalys-analytics-adms-production',
+    date='2022-07-12',
+    file='liquidacao',
     domain='brl',
-    tecnology='sftp'
+    tecnology='sftp',
+    qt_days_reprocessing='3'
 
 )
 
@@ -57,6 +55,11 @@ def get_bytes_by_key(bucket_name, key):
     result = s3_client.get_object(Bucket=bucket_name, Key=key)
     byt_obj = result["Body"].read()
     return byt_obj
+
+
+def daterange(start_date, end_date):
+    for n in range(int((end_date - start_date).days)):
+        yield start_date + timedelta(n)
 
 
 def download_zip_brl_sftp_local(domain=None, file=None, date=None):
@@ -90,4 +93,13 @@ def download_zip_brl_sftp_local(domain=None, file=None, date=None):
                 send_data_to_s3(files_byt, f'{prefix_dest_files}/{filename}')
 
 
-download_zip_brl_sftp_local(glue_args['domain'], glue_args['file'], glue_args['date'])
+# Dowload retroativo
+qt_days_reprocessing = int(glue_args["qt_days_reprocessing"])
+date = f'{glue_args["date"]} 00:00:00'
+dateIni = datetime.strptime(date, '%Y-%m-%d %H:%M:%S') - timedelta(days=qt_days_reprocessing)
+dateFim = datetime.strptime(date, '%Y-%m-%d %H:%M:%S')
+
+for single_date in daterange(dateIni, dateFim):
+    print(f'Verificando arquivos do dia: {single_date.strftime("%Y-%m-%d")}')
+    date_execute = single_date.strftime("%Y-%m-%d")
+    download_zip_brl_sftp_local(glue_args['domain'], glue_args['file'], date_execute)
