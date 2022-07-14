@@ -87,7 +87,7 @@ def unzip_files(adm=None, data=None, src=None, dest=None):
                     send_data_to_s3(body_data_bytes, key_str_filename)
                     print(f"File {key_str_filename} sended to S3")
 
-            except TypeError as e:
+            except FileNotFoundError as e:
                 raise 'File no type: *.zip'
 
     print(f"Done unzip")

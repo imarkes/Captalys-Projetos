@@ -1,0 +1,93 @@
+[
+    {
+        "table_name": "aquisicao",
+        "column_name": "FUNDO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "CNPJ_FUNDO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "CEDENTE",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "CPF_CNPJ_CEDENTE",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "ENTRADA",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "DATA_VENCIMENTO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "QUANTIDADE",
+        "data_type": "integer",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "VALOR_COMPRA",
+        "data_type": "float",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "VALOR_VENCIMENTO",
+        "data_type": "float",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "TIPO_RECEBIVEL",
+        "data_type":  "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "ID_RECEBIVEL",
+        "data_type": "integer",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "NUMERO_DOCUMENTO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "SEU_NUMERO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "NOME_SACADO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "aquisicao",
+        "column_name": "CPF_CNPJ_SACADO",
+        "data_type": "character varying",
+        "primary_key": false
+    }
+    
+]

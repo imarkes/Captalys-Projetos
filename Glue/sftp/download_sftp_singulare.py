@@ -3,11 +3,9 @@ from io import BytesIO, StringIO
 import boto3
 from connection_sftp import SftpConnector
 
-from pathlib import Path
-
-aws_access_key_id = "ASIAS34UIATUAZRP4JJP"
-aws_secret_access_key = "yr0zJXgu4zx9yZrb/6cX/J0GWFyc6gDebHqwY0Aa"
-aws_session_token = "IQoJb3JpZ2luX2VjEGYaCXNhLWVhc3QtMSJGMEQCICASryxV81eMQoQ8uGCt6Zi/oC78zHgO+dHasH5uap7MAiA8aF3VZfnfCI5pIMGZtdHsnLRfISRCUf6cCQIzFyc6LCqrAwiP//////////8BEAEaDDE5NzM0MjUyODc0NCIMQAuraDLUGdfjU8PYKv8CKOQekyHrhkkr09Wg9kcR6Hf15Mc1Vv8Vmm0ga4KxTuGi/F2IwB3+OPm6jJv3Z294MeTJWEhrrFsdKdvwDkuRvNk5lzkrPu71ZT/LT4WmWEWKlomtXvKkkeoibmpmvPo9NalY8DyORwXP2+0zQVj6z+xhq8oZRGY2mb+qMxZuGNwLbj3mM902V2BCTx84M7VB2ALSmXv+zdTSbgTwxGr9xjIOmekRfQAiw+EXH7KFeufLHGzJkAaTSHSDhenBuC6XLH9eeoKm/9zlwwmIHfXvzsaTtN6IPwC1LKeJ0PZ5Psrjy9ymM4lVO2sQ38jGA0InC1kD5eNrkTUhaDjAwELEXegHZOlO5B9iH0ByzKrSjQcwK9RkiZJOU5YbtFUT1fofN7+Ys6JqNo4xDt4t5nYWlXExfS8DbiXFn6As34DIR2JpWGqfFscUf/ywkQ+EYDsPKiOLDk640qQonwyq/V6ZwuUFQfCphEkdiyt+97jaRklmm2eGON7vcZqjG4vCxhYw6NiLlgY6pwFgIq5oDF5CgKrx9k8VNHGwZn5h4OVrcpgPv+OghmnQ13YnvVpbRvNBt+l9uZVzA+CwPpVqF0MZK5voD+yYjLJ4ZZV+C6Ixdd2DXnSAjjKZLhIjBn7vjEavjBEYB6FryEH12vRtxoOhHH/36FBy4kjOCkF4Q/BJ+DLitX/ht26tAqw+anCHU7D7oD1BqBDY+zn5Ivja36NnicJNTP9uSMcVt0n0VpeR1A=="
+aws_access_key_id="ASIAS34UIATUI7QD2KFZ"
+aws_secret_access_key="IdT7hpraHHiTOxTvb+4cdq40LkT16W7m4n+N2tk6"
+aws_session_token="IQoJb3JpZ2luX2VjELL//////////wEaCXNhLWVhc3QtMSJIMEYCIQCr5eNbZJaZVyaHtlaaI5usRNtihfKZbF1hFdoVmuMdzAIhAKOuUpkZpPgmNqpJtjQLNaIbS9TU91dFtT7wtWdKYlF2KqsDCNr//////////wEQARoMMTk3MzQyNTI4NzQ0Igy1JuJ6lsmZQr6k06cq/wL5ft2Yesbewqaa0ZmWvIY5eQXPl+dIdPHV8xfUvL2bdIA0xVRSOyVdWAgy+CNI7TCIDAn73TDdS9u039MaJ0rED2NBS79cVUzqQ6gqigjyfFx2hMrri/gCmgGxRjuZkZF+dEAM+kS8ZleK7bVMYHL8sM0k1vDSZElmljBRAKLvjQIO6TCuIYHySOitF2OCnSKWhn99GQBm9C6NJ/DIEOo6WDpahVHu4T5cqBtGKcYdOfREX57WG/aWyFwwLV3D0Kw2uQPBB98CufGtMFEBM6IC+PStwxEkluayyHs1zg1ab1WNu2+g7K83p/riZP6K4vPKu4zN+6CQOyjR6K0z8LIq95en7K6/BiEsGwqTgHySlA9GK3HVQjU5h4j9ojVWoMA5/Z+EwJEUBXpwYVVYhD2ep0mKKSvliT9f0FgodC6MjauFH3vMUqCwOaazwUb/dcpHNc20K35D9OLVvNczqlbdE6Wau9EODQwVqsOVyfV3wE0glCC1jv2GrRVLibWjTzD3q5yWBjqlAalgtlyWHAwojfmmiQ+bqt15Drdj0wD6GUvPspKYn6Vx5R9to1ml3KFGllbPRugPUA+NAkd0spLNpqv0nxfYionak/N5gFsPVwDqr5xJG/155EpZRUsaR5rzEteMyAvYZ6SlSs1zYW6JOPRMFyMI+0C+zSDw1zsNV6hHtUtYqi/lL0akkMBAT889Bo17NDrMFuOGPQeHLKDe4DS6YLvNl51e8vsWtA=="
 
 s3_client = boto3.client(
     "s3",
@@ -53,18 +51,22 @@ class ExtractSftpSimgulare:
         year = date.split('-')[0]
         str_date = date.replace('-', '')
 
-        # /sftp-captalys/SIMPLIC/ESTOQUE
+        # Lista os arquivos do diretorio
         self.singulare.cd(f'/sftp-captalys/SIMPLIC/{folder.upper()}')
 
         for filename in self.singulare.listdir():
             if (str_date in filename) and (docs.upper() in filename):
-                key_str_filename = f"{domain}/data/sftp/v1/csv/lake/{folder}/{year}/{month}/{days}/{filename}"
+                if docs == 'liquidados':
+                    docs = 'liquidacao'
+                    key_str_filename = f"{domain}/data/sftp/v1/csv/lake/{docs}/{year}/{month}/{days}/{filename}"
+                else:
+                    key_str_filename = f"{domain}/data/sftp/v1/csv/lake/{folder}/{year}/{month}/{days}/{filename}"
 
                 flo = BytesIO()
                 buffer = self.singulare.getfo(f'/sftp-captalys/SIMPLIC/{folder.upper()}/{filename}', flo)
                 flo.seek(0)
                 print('Enviando: ', key_str_filename)
-                send_data_to_s3(flo, key_str_filename)
+                #send_data_to_s3(flo, key_str_filename)
 
 
 glue_args = dict(
@@ -87,34 +89,11 @@ if __name__ == '__main__':
         f'{Y}-{M}-03',
         f'{Y}-{M}-04',
         f'{Y}-{M}-05',
-        f'{Y}-{M}-06',
-        f'{Y}-{M}-07',
-        f'{Y}-{M}-08',
-        f'{Y}-{M}-09',
-        f'{Y}-{M}-10',
-        f'{Y}-{M}-11',
-        f'{Y}-{M}-12',
-        f'{Y}-{M}-13',
-        f'{Y}-{M}-14',
-        f'{Y}-{M}-15',
-        f'{Y}-{M}-16',
-        f'{Y}-{M}-17',
-        f'{Y}-{M}-18',
-        f'{Y}-{M}-19',
-        f'{Y}-{M}-20',
-        f'{Y}-{M}-22',
-        f'{Y}-{M}-22',
-        f'{Y}-{M}-23',
-        f'{Y}-{M}-24',
-        f'{Y}-{M}-25',
-        f'{Y}-{M}-26',
-        f'{Y}-{M}-27',
-        f'{Y}-{M}-28',
-        f'{Y}-{M}-29',
-        f'{Y}-{M}-30',
-        f'{Y}-{M}-31',
-    ]
 
-    for day in datas:
-        print('Verificando dia: ', day)
-        socopa.singulare_list_path_files('singulare', 'estoque', day, 'estoque')
+    ]
+    #liquidados
+    #estoque
+    #aquisicao
+    for execute_date in datas:
+        print('Verificando dia: ', execute_date)
+        socopa.singulare_list_path_files('singulare', 'estoque', execute_date, 'liquidados')

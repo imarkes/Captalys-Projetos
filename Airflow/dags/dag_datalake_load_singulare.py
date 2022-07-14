@@ -18,9 +18,10 @@ username = '{{var.value.username}}'
 technology = 'sftp'
 folder = 'estoque'
 domain = 'singulare'
+qt_days_reprocessing = '10'
 
 files = [
-    'estoque',
+    'estoque', 'liquidacao', 'aquisicao'
 ]
 
 tasks_glueJob_download_sftp_singulare = []
@@ -44,7 +45,7 @@ def get_date_execution(str_date_logical, str_date_params, check_date_atual):
 
 
 # "{{ get_date_execution_template(ds, dag_run.conf.get('data_customizada'), True) }}"
-date = '{{ds}}'
+#date = '{{ds}}'
 
 
 default_args = {
@@ -117,7 +118,8 @@ with DAG(
                     '--domain': domain,
                     '--folder': folder,
                     '--docs': file,
-                    '--private_key': private_key
+                    '--private_key': private_key,
+                    '--qt_days_reprocessing': qt_days_reprocessing
                 },
                 aws_conn_id='datalake-aws-analytics',
                 region_name='sa-east-1'
@@ -139,7 +141,8 @@ with DAG(
                     '--destination_bucket': destination_bucket,
                     '--file': file,
                     '--source_bucket': source_bucket,
-                    '--technology': technology
+                    '--technology': technology,
+                    '--qt_days_reprocessing': qt_days_reprocessing
                 },
                 aws_conn_id='datalake-aws-analytics',
                 region_name='sa-east-1'
@@ -175,7 +178,8 @@ with DAG(
                     '--file': file,
                     '--land_bucket': land_bucket,
                     '--source_bucket': source_bucket,
-                    '--technology': technology
+                    '--technology': technology,
+                    '--qt_days_reprocessing':qt_days_reprocessing
                 },
                 aws_conn_id='datalake-aws-analytics',
                 region_name='sa-east-1'
@@ -234,6 +238,4 @@ with DAG(
 
     )
     task_glueCrawler_raw_singulare >> task_redshift_insert_glueCrawler_raw_singulare
-
-
 

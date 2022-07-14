@@ -1,0 +1,123 @@
+[
+    {
+        "table_name": "liquidacao",
+        "column_name": "FUNDO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "DATA_MOVIMENTO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "CEDENTE",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "CEDENTE_CPF_CNPJ",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "OCORRENCIA",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "SITUACAO_DO_RECEBIVEL",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "DOCUMENTO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "SACADO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "SACADO_CPF_CNPJ",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "TAXA",
+        "data_type":  "float",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "ID_RECEBIVEL",
+        "data_type": "integer",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "VALOR_DE_AQUISICAO",
+        "data_type": "float",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "VALOR_DE_VENCIMENTO",
+        "data_type": "float",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "DATA_DA_AQUISICAO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "DATA_DE_VENCIMENTO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "VALOR_DE_PAGO",
+        "data_type": "float",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "AJUSTE",
+        "data_type": "float",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "SEU_NUMERO",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "NUMERO_CORRESPONDENTE",
+        "data_type": "character varying",
+        "primary_key": false
+    },
+    {
+        "table_name": "liquidacao",
+        "column_name": "TIPO_RECEBIVEL",
+        "data_type": "character varying",
+        "primary_key": false
+    }
+
+]
